@@ -1,12 +1,12 @@
 {
   "name": "dsh-meetai",
-  "version": "0.2.7-rc.1",
+  "version": "0.3.9-composer.1",
   "private": true,
   "type": "module",
-  "description": "DSH 会议助手：会议日程与 AI 议程、模板纪要生成与签署归档、可溯源会议问答（主内容区应用）",
-  "main": "./index.js",
+  "description": "KB 同款输入框移植版：圆角卡片 + 工具条（附件/引用/模型/圆形发送）+ 文件夹拖拽；并修复附件按钮静默失效与受限问答拖拽冒泡",
+  "main": "./index-huiwen.js",
   "exports": {
-    ".": "./index.js",
+    ".": "./index-huiwen.js",
     "./client": "./client.js",
     "./package.json": "./package.json"
   },
@@ -17,7 +17,10 @@
     "icon.svg",
     "scripts/",
     "README.md",
-    "package.json"
+    "package.json",
+    "THIRD_PARTY_NOTICES.md",
+    "licenses/",
+    "index-huiwen.js"
   ],
   "icon": "./icon.svg",
   "dsh": {
@@ -35,9 +38,17 @@
       "entryKey": "cap:meeting",
       "order": 10,
       "category": "协作效率",
-      "version": "v0.2.7-rc.1",
-      "tags": ["会议日程", "纪要生成", "会议问答"],
-      "subs": ["会议日程", "会议纪要", "会议问答"],
+      "version": "v0.3.9-composer.1",
+      "tags": [
+        "会议日程",
+        "纪要生成",
+        "会议问答"
+      ],
+      "subs": [
+        "会议日程",
+        "会议纪要",
+        "会议问答"
+      ],
       "openEvent": "cappacks:open-meeting"
     }
   }

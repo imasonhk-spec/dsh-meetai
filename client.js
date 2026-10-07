@@ -26,9 +26,152 @@ window.__ModuleLoader__.load({
     const { useState, useEffect, useMemo, useRef, useCallback } = React
 
     const API = '/api/meeting-assistant'
+// Inline into classic factory; no dynamic imports, job submissions or source writes.
+function SplitLegacyPanel({meetingId,locked,onLatest,showToast}){
+ const [workspace,setWorkspace]=useState(null),[recordingId,setRecordingId]=useState(''),[cues,setCues]=useState([]),[text,setText]=useState(''),[cursor,setCursor]=useState(null),[clock,setClock]=useState(0),[error,setError]=useState(''),[history,setHistory]=useState(null),[reload,setReload]=useState(0)
+ const audio=useRef(null),axis=useRef(''),pending=useRef(null),requestEpoch=useRef(0),historyEpoch=useRef(0),pageBusy=useRef(false)
+ const owner=JSON.stringify([meetingId,recordingId,reload]);axis.current=owner
+ const recording=(workspace?.legacyRecordings||[]).find(row=>row.recording_id===recordingId)
+ const url=recording?.mediaURL===API+'/recordings/'+encodeURIComponent(recordingId)+'/file'?recording.mediaURL:null
+ useEffect(()=>{let live=true;setWorkspace(null);setRecordingId('');setError('');setHistory(null);historyEpoch.current++;if(meetingId)request('/meetings/'+encodeURIComponent(meetingId)+'/workspace').then(value=>{if(live){setWorkspace(value);setRecordingId(value.legacyRecordings?.[0]?.recording_id||'')}}).catch(e=>{if(live)setError(e.message)});return()=>{live=false;requestEpoch.current++;historyEpoch.current++;pending.current=null}},[meetingId,reload])
+ async function loadCues(next){const key=owner,epoch=++requestEpoch.current;if(!recording?.timingsAvailable)return;try{const data=await request('/transcripts/'+encodeURIComponent(recording.transcriptVersionId)+'/segments?meetingId='+encodeURIComponent(meetingId)+'&level=sentence&limit=100'+(next?'&cursor='+encodeURIComponent(next):''));if(axis.current===key&&requestEpoch.current===epoch){setCues(data.items||[]);setCursor(data.nextCursor||null)}}catch(e){if(axis.current===key&&requestEpoch.current===epoch){setCues([]);setCursor(null);setError('时间信息不可用，不提供定位：'+e.message)}}}
+ useEffect(()=>{let live=true;const key=owner;requestEpoch.current++;setCues([]);setText('');setCursor(null);setClock(0);setError('');pending.current=null;if(recording?.transcriptVersionId){request('/transcripts/'+encodeURIComponent(recording.transcriptVersionId)+'?meetingId='+encodeURIComponent(meetingId)).then(data=>{if(live&&axis.current===key)setText(data.text||'')}).catch(e=>{if(live&&axis.current===key)setError(e.message)});if(recording.timingsAvailable)void loadCues(null)}return()=>{live=false;requestEpoch.current++;pending.current=null}},[owner,recording?.transcriptVersionId,recording?.timingsAvailable])
+ function applySeek(){const p=pending.current,a=audio.current;if(!p||p.owner!==axis.current||owner!==axis.current||!a||a.readyState<1||!url||a.getAttribute('data-recording-id')!==recordingId||a.currentSrc&&a.currentSrc!==new URL(url,window.location.href).href)return;if(!Number.isFinite(a.duration)||p.ms>a.duration*1000){pending.current=null;setError('定位时间超出或未能确认录音时长，未执行跳转。');return}a.currentTime=p.ms/1000;setClock(a.currentTime);pending.current=null}
+ function seek(ms){if(!url||!Number.isFinite(ms)||ms<0)return;pending.current={owner,ms};applySeek()}
+ async function preview(row){const key=owner,epoch=++historyEpoch.current;try{const data=await request('/minutes-revisions/'+encodeURIComponent(row.id)+'?meetingId='+encodeURIComponent(meetingId));if(axis.current===key&&historyEpoch.current===epoch)setHistory(data)}catch(e){if(axis.current===key&&historyEpoch.current===epoch)showToast('历史读取失败，当前Word未替换：'+e.message,'error')}}
+ async function more(kind){const next=workspace?.pages?.[kind]?.nextCursor,key=owner;if(!next||pageBusy.current)return;pageBusy.current=true;try{const data=await request('/meetings/'+encodeURIComponent(meetingId)+'/workspace?'+kind+'Cursor='+encodeURIComponent(next));if(axis.current===key)setWorkspace(value=>({...value,[kind]:[...(value[kind]||[]),...(data[kind]||[])],pages:{...value.pages,[kind]:data.pages?.[kind]}}))}catch(e){if(axis.current===key)setError(e.message)}finally{pageBusy.current=false}}
+ const valid=row=>Number.isFinite(row.startMs)&&Number.isFinite(row.endMs)&&row.startMs>=0&&row.endMs>row.startMs&&row.timingProvenance&&row.timingProvenance!=='unavailable',active=cues.find(row=>valid(row)&&clock*1000>=row.startMs&&clock*1000<row.endMs)
+ if(!meetingId)return null
+ return h('section',{className:'mt-card mt-stack','aria-label':'独立会议资产与历史'},h('h3',null,'会议资产与历史'),h('p',{className:'mt-muted'},'独立验收版；不执行新版纪要、转写或裁剪任务。'),h('button',{className:'mt-btn small',disabled:locked,onClick:()=>setReload(value=>value+1)},'刷新资产'),error?h('div',{role:'alert'},'读取失败不代表没有历史：',error):null,
+ (workspace?.legacyMinutes||[]).map(row=>h('div',{key:row.minutesId},row.title,' · v'+row.version,' ',h('button',{className:'mt-btn small',disabled:locked,onClick:()=>onLatest(row.logicalMinutesId)},'载入最新人工稿'))),workspace?.pages?.legacyMinutes?.nextCursor?h('button',{onClick:()=>more('legacyMinutes')},'更多纪要'):null,
+ (workspace?.minutes||[]).map(row=>h('button',{key:row.id,onClick:()=>preview(row)},'只读历史 v'+row.version)),workspace?.pages?.minutes?.nextCursor?h('button',{onClick:()=>more('minutes')},'更多历史版本'):null,history?h('details',{open:true},h('summary',null,'只读历史；不替换当前Word'),h('pre',{style:{whiteSpace:'pre-wrap'}},history.content)):null,
+ h('select',{value:recordingId,disabled:locked,onChange:event=>{pending.current=null;setRecordingId(event.target.value)}},h('option',{value:''},'选择已保存录音'),(workspace?.legacyRecordings||[]).map(row=>h('option',{key:row.recording_id,value:row.recording_id},row.filename))),workspace?.pages?.legacyRecordings?.nextCursor?h('button',{onClick:()=>more('legacyRecordings')},'更多录音'):null,
+ url?h('audio',{key:owner,ref:audio,src:url,controls:true,preload:'metadata','data-recording-id':recordingId,onLoadedMetadata:applySeek,onTimeUpdate:event=>{if(axis.current===owner)setClock(event.currentTarget.currentTime)},style:{width:'100%'}}):null,
+ h('p',{role:'note'},recording?.timingsAvailable?'原文显式句级区间，精度为秒；需人工复核，准确性未认证，没有逐字时间。':'无可用真实时间：全文可读，定位和高亮禁用。'),
+ h('div',{style:{maxHeight:260,overflow:'auto'}},cues.map(row=>h('div',{key:row.id,'aria-current':active?.id===row.id?'true':undefined,style:{padding:8,border:active?.id===row.id?'2px solid currentColor':'2px solid transparent'}},h('button',{disabled:!url||!valid(row),onClick:()=>seek(row.startMs)},valid(row)?Math.floor(row.startMs/1000)+'秒 · 定位':'时间不可用'),' ',row.speakerId,' ',row.text))),cursor?h('button',{onClick:()=>loadCues(cursor)},'下一页字幕（100句）'):null,
+ text?h('details',null,h('summary',null,'已保存转写全文（只读）'),h('pre',{style:{whiteSpace:'pre-wrap'}},text)):null)
+}
+
+
+    // Presentation only: never modify the authoritative transcript/FULL TEXT.
+    function formalCaptionEntries(transcript) {
+      const lines = String(transcript || '').split(/\r?\n/).filter(line => line.trim())
+      const timed = lines.map(line => {
+        const match = line.match(/^\[([\d:]+)-([\d:]+)\]\s*(?:SPK[^:]*:\s*)?(.*)$/)
+        if (!match) return null
+        const millis = value => value.split(':').reduce((seconds, part) => seconds * 60 + Number(part), 0) * 1000
+        return { startMs: millis(match[1]), endMs: millis(match[2]), text: match[3].trim() }
+      }).filter(row => row && row.text && Number.isFinite(row.startMs) && Number.isFinite(row.endMs))
+      const rows = timed.length ? timed : lines.map(line => ({ text: line.replace(/^\[FULL TEXT\]\s*/, '').trim() })).filter(row => row.text)
+      return rows.map((row, index) => ({ ...row, utteranceId: `formal-${index}`, speakerId: null,
+        kind: 'formal', confidenceState: 'unknown', source: '正式转写' }))
+    }
     const NAV_EV = 'meetai:navigate'
     const OPEN_EV = 'cappacks:open-meeting'
     let pendingNav = null
+// This function is compiled into the existing classic Client factory, not loaded as another plugin.
+function startServerLocalCapture(stream, handlers) {
+  const controller = new AbortController()
+  let audio, node, source, gain, session, running = true, stopping = false, draining = false, closed = false
+  let samples = [], queue = [], seq = 0, sampleOffset = 0, carry = new Float32Array(0), phase = 0
+  const cleanupAudio = () => {
+    if (node) node.onaudioprocess = null
+    for (const item of [node, source, gain]) { try { item?.disconnect() } catch {} }
+    if (audio && audio.state !== 'closed') audio.close().catch(() => {})
+  }
+  const deleteSession = () => {
+    if (session && !closed) {
+      closed = true
+      fetch(`${API}/local-captions/session/${encodeURIComponent(session.sessionId)}`, {
+        method: 'DELETE', credentials: 'same-origin', headers: { 'X-Caption-Token': session.token },
+      }).catch(() => {})
+    }
+  }
+  const fail = (message) => {
+    if (!running && closed) return
+    running = false; stopping = true; queue = []; samples = []
+    controller.abort(); cleanupAudio(); deleteSession()
+    handlers.error(message || '本地字幕失败；保持本地模式，完整录音继续。')
+  }
+  const packet = () => {
+    if (!samples.length) return
+    if (queue.length >= 4) { fail('本地字幕处理积压超过一分钟，已停止字幕识别；未切换浏览器，完整录音继续。'); return }
+    const buffer = new ArrayBuffer(samples.length * 2), view = new DataView(buffer)
+    samples.forEach((value, index) => view.setInt16(index * 2, Math.round(Math.max(-1, Math.min(1, value)) * 32767), true))
+    queue.push({ buffer, seq: seq++, startMs: Math.floor(sampleOffset / 16) })
+    sampleOffset += samples.length; samples = []
+    void drain()
+  }
+  async function drain() {
+    if (!session || draining || !running) return
+    draining = true
+    try {
+      while (queue.length && running) {
+        const item = queue[0]
+        const response = await fetch(`${API}/local-captions/session/${encodeURIComponent(session.sessionId)}/chunk?seq=${item.seq}&startMs=${item.startMs}`, {
+          method: 'POST', credentials: 'same-origin', signal: controller.signal,
+          headers: { 'Content-Type': 'application/octet-stream', 'X-Caption-Token': session.token }, body: item.buffer,
+        })
+        const data = await response.json()
+        if (!response.ok) throw new Error(data.reason || data.message || data.error || '服务器本地识别失败')
+        if (!running) break
+        queue.shift()
+        handlers.entries(Array.isArray(data.entries) ? data.entries : [])
+        handlers.status(stopping ? '本地字幕尾段已处理；正式转写仍依据完整录音。' : '服务器本地字幕已更新；不使用浏览器识别服务。')
+      }
+      if (stopping && !queue.length) { running = false; deleteSession() }
+    } catch (error) { if (running) fail(error.message) }
+    finally { draining = false }
+  }
+  void (async () => {
+    try {
+      const Audio = window.AudioContext || window.webkitAudioContext
+      if (!Audio) throw new Error('浏览器不支持本地字幕音频采集；完整录音继续。')
+      audio = new Audio({ sampleRate: 16000 })
+      await audio.resume()
+      if (!running || stopping) { cleanupAudio(); return }
+      source = audio.createMediaStreamSource(stream)
+      node = audio.createScriptProcessor(4096, 1, 1)
+      gain = audio.createGain(); gain.gain.value = 0
+      node.onaudioprocess = event => {
+        if (!running || stopping) return
+        const input = event.inputBuffer.getChannelData(0), joined = new Float32Array(carry.length + input.length)
+        joined.set(carry); joined.set(input, carry.length)
+        const step = audio.sampleRate / 16000
+        while (phase + 1 < joined.length) {
+          const i = Math.floor(phase), f = phase - i
+          samples.push(joined[i] * (1 - f) + joined[i + 1] * f)
+          phase += step
+          if (samples.length === 16000 * 15) packet()
+          if (!running) return
+        }
+        phase -= joined.length - 1; carry = joined.slice(-1)
+      }
+      source.connect(node); node.connect(gain); gain.connect(audio.destination)
+      handlers.status('服务器本地字幕启动中；每约15秒提交一段，模型处理可能延迟，完整录音独立进行。')
+      const response = await fetch(`${API}/local-captions/session`, {
+        method: 'POST', credentials: 'same-origin', signal: controller.signal,
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.reason || data.message || data.error || '本地字幕会话启动失败')
+      if (!data.sessionId || !data.token || data.sampleRate !== 16000) throw new Error('本地字幕协议不匹配')
+      session = data
+      if (!running) { deleteSession(); return }
+      if (stopping && !queue.length) { running = false; deleteSession(); return }
+      await drain()
+    } catch (error) { if (running) fail(error.message) }
+  })()
+  return {
+    stop() {
+      if (stopping) return
+      stopping = true; cleanupAudio(); packet(); void drain()
+      if (session && !queue.length && !draining) { running = false; deleteSession() }
+    },
+    cancel() { running = false; stopping = true; controller.abort(); cleanupAudio(); queue = []; samples = []; deleteSession() },
+  }
+}
+
     // 会议问答附件：扩展名白名单与单文件大小上限（与服务端 /upload 契约一致）
     const UPLOAD_RE = /\.(pdf|docx|xlsx|txt|md)$/i
     const UPLOAD_MAX = 30 * 1024 * 1024
@@ -77,15 +220,17 @@ window.__ModuleLoader__.load({
 .mt-statrow b.indigo{color:var(--dsw-static-blue-600)}
 .mt-railback{margin:8px 10px 12px;display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--dsw-alias-border-l2);background:none;color:var(--dsw-alias-label-secondary);border-radius:10px;padding:8px 10px;cursor:pointer;font-size:12.5px;flex:none;white-space:nowrap}
 .mt-railback:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.mt-menu{display:none;align-items:center;justify-content:center;width:32px;height:32px;flex:none;padding:0;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);cursor:pointer;font-size:15px;line-height:1}
+.mt-menu:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.mt-menu:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+/* ===== 窄屏抽屉化（mtNavDrawer-20261005）：不再常驻 60px 图标条，侧栏改为屏外抽屉 ===== */
 @media (max-width:900px){
-  .mt-rail{width:60px}
-  .mt-brand{justify-content:center;padding:10px 0}
-  .mt-brandname,.mt-brandsub,.mt-railsection,.mt-railstats,.mt-railitem .txt,.mt-railtag,.mt-railback .txt{display:none}
-  .mt-railitem{justify-content:center;padding:11px 0}
-  .mt-railitem .ic{gap:0}
-  .mt-railitem .mt-railbadge{position:absolute;top:2px;right:5px;transform:scale(.82);transform-origin:top right}
-  .mt-railitem .mt-raildot{position:absolute;top:7px;right:8px}
-  .mt-railback{margin:6px 8px 10px;padding:8px 0;font-size:15px}
+  .mt-app aside.mt-rail{width:min(280px,86vw);position:absolute;left:0;top:0;bottom:0;z-index:1202;flex:none;transform:translateX(-110%);transition:transform .16s ease;will-change:transform;box-shadow:8px 0 24px rgba(0,0,0,.18);touch-action:pan-y;overscroll-behavior:contain}
+  .mt-app.mt-rail-expanded .mt-rail{transform:translateX(0)}
+  .mt-app.mt-rail-lock .mt-body{overflow:hidden}
+  .mt-app .mt-menu{display:inline-flex}
+  .mt-app .mt-grow{min-width:150px}
+  .mt-app .mt-session.active{font-weight:650;box-shadow:inset 3px 0 0 var(--dsw-static-blue-600);border-radius:0 9px 9px 0}
 }
 .mt-kicker{font-size:10px;letter-spacing:.16em;text-transform:uppercase;font-weight:750;color:var(--dsw-alias-state-business-primary)}
 .mt-body{flex:1;min-width:0;min-height:0;overflow:auto;padding:15px 20px 44px}
@@ -237,14 +382,16 @@ window.__ModuleLoader__.load({
 .mt-railsessrow:hover .mt-railsessdel{opacity:1}
 .mt-railsessdel:hover{background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary)}
 .mt-railempty{width:calc(100% - 16px);margin-left:16px;padding:1px 10px 3px;font-size:11px;color:var(--dsw-alias-label-tertiary)}
-.mt-body-ask{padding-bottom:15px}
-/* 对话框高度由状态驱动（默认 2 倍 520=1040，可拖拽 520~2200，localStorage 记忆） */
+/* kbcAsk-20261005：输入卡片贴底，底部留白统一交给 .mt-askwrap 的 12px */
+.mt-body-ask{padding-bottom:0}
+/* kbcAsk-20261005：对话区高度恒为可用空间（autoH035）；输入卡片高度另由 dockH035 控制 */
 .mt-askwrap{position:relative;display:flex;flex-direction:column;gap:10px;min-width:0;flex:1}
 .mt-asktop{display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex:none}
 .mt-hintchip{display:inline-flex;align-items:center;gap:4px;max-width:340px;border:1px solid var(--dsw-alias-border-l1);border-radius:999px;padding:3px 12px;font-size:12px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-1);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mt-hintchip:hover{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}
-.mt-hintchip.new{color:var(--dsw-alias-label-primary-foreground);background:var(--dsw-alias-button-primary-fill);border-color:transparent;font-weight:650;flex:none}
-.mt-hintchip.new:hover{background:var(--dsw-alias-button-primary-hover);color:var(--dsw-alias-label-primary-foreground)}
+/* kbcAsk-20261005：新建会议 chip 底色改浅灰（原为品牌蓝实心） */
+.mt-hintchip.new{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-3);border-color:var(--dsw-alias-border-l1);font-weight:650;flex:none}
+.mt-hintchip.new:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-primary)}
 .mt-askbody{display:flex;gap:12px;flex:1;min-height:0}
 .mt-askpanel{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;gap:8px}
 /* 底部拖拽把手样式并入 .mt-askdock（吸底停靠区内），此处不再单独定位 */
@@ -292,6 +439,160 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
     /* i18n 词典                                                          */
     /* ---------------------------------------------------------------- */
 
+    // Approved cloud palette is local to this module, never html/body or global settings.
+    const CLOUD_CSS = `
+.mt-app{--dsw-specific-sidebar-fill:#fff;--dsw-alias-bg-base:#f4f6f9;--dsw-alias-bg-layer-1:#fff;--dsw-alias-bg-layer-2:#f7f9fc;--dsw-alias-bg-layer-3:#eef2f7;--dsw-alias-bg-mask-1:rgba(16,28,48,.36);--dsw-alias-border-l1:#e6eaf1;--dsw-alias-border-l2:#d3dae5;--dsw-alias-label-primary:#2a3342;--dsw-alias-label-secondary:#5f6b7e;--dsw-alias-label-tertiary:#94a0b2;--dsw-alias-label-dimmed:#94a0b2;--dsw-alias-label-primary-foreground:#fff;--dsw-alias-button-primary-fill:#2563eb;--dsw-alias-button-primary-hover:#1d4fd7;--dsw-alias-state-business-primary:#2563eb;--dsw-alias-state-business-tertiary:#eaf1fe;--dsw-alias-state-success-primary:#16803c;--dsw-alias-state-success-secondary:#44b778;--dsw-alias-state-success-tertiary:#e2f5e9;--dsw-alias-state-warn-primary:#c99b36;--dsw-alias-state-warn-label:#9a6b15;--dsw-alias-state-warn-tertiary:#fdf3dd;--dsw-alias-state-error-primary:#c0392b;--dsw-alias-interactive-bg-hover-danger:#fdecea;--dsw-alias-interactive-bg-hover:#f0f4fc;--dsw-alias-interactive-bg-active:#eaf1fe;--dsw-alias-link:#2563eb;--dsw-alias-toast-bg:#2a3342;--dsw-static-blue-600:#2563eb;--dsw-static-deepseek-450:#38bdf8;display:flex;flex-direction:column;font:14px/1.6 'PingFang SC','Microsoft YaHei','Segoe UI',system-ui,sans-serif}
+.mt-topbar{flex:none;padding:20px 30px 16px;background:linear-gradient(180deg,#fff,#f9fbff);border-bottom:2px solid #dbe8fd;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.mt-topbar h2{margin:0;font-size:23px;line-height:1.3;color:#2a3342}
+.mt-topbar p{margin:5px 0 0;font-size:12px;color:#5f6b7e}
+.mt-tabs{display:flex;gap:8px;flex-wrap:wrap;padding:10px 30px;border-bottom:1px solid #e6eaf1;background:#fff;flex:none}
+.mt-body{padding:22px 30px 44px;width:100%}
+.mt-content{max-width:1240px;margin:0 auto}
+.mt-card{padding:20px;border-radius:14px;box-shadow:0 1px 3px rgba(16,28,48,.04),0 6px 18px rgba(16,28,48,.04)}
+.mt-stack{gap:18px}.mt-btn{padding:8px 16px;border-radius:9px}.mt-btn.small{padding:5px 10px;font-size:12px}
+.mt-input,.mt-select,.mt-textarea{background:#fff;padding:9px 11px}.mt-tcard{grid-template-columns:1fr;gap:18px}
+.mt-minute-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}.mt-minute-body{white-space:pre-wrap;word-break:break-word;border:1px solid #e6eaf1;border-radius:10px;padding:14px 16px;line-height:1.85}
+.mt-more{position:relative}.mt-more summary{list-style:none;cursor:pointer}.mt-more[open]>.mt-more-menu{position:absolute;right:0;top:calc(100% + 5px);min-width:200px;z-index:25;background:#fff;border:1px solid #d3dae5;border-radius:10px;padding:8px;box-shadow:0 10px 30px rgba(16,28,48,.18)}
+.mt-health-menu{max-width:370px}.mt-app[data-mt-resizing],.mt-app[data-mt-resizing] *{cursor:ns-resize!important;user-select:none!important}
+@media(max-width:1080px){.mt-qa-grid{grid-template-columns:1fr}}
+@media(max-width:860px){.mt-topbar{padding:16px}.mt-tabs{padding:10px 16px}.mt-body{padding:16px}.mt-minute-tools{margin-left:0;width:100%}}
+`
+    // A tiny rule scoper: recursively scope media/support rules, leave animation frames intact.
+    function scopeMeetingCss(input) {
+      const source = input.replace(/\/\*[\s\S]*?\*\//g, '')
+      let result = '', cursor = 0
+      while (cursor < source.length) {
+        const open = source.indexOf('{', cursor)
+        if (open < 0) break
+        let end = open + 1, depth = 1
+        while (end < source.length && depth) { if (source[end] === '{') depth++; if (source[end] === '}') depth--; end++ }
+        const header = source.slice(cursor, open).trim(), body = source.slice(open + 1, end - 1)
+        if (/^@(?:media|supports)/.test(header)) result += header + '{' + scopeMeetingCss(body) + '}'
+        else if (header.startsWith('@')) result += header + '{' + body + '}'
+        else result += header.split(',').map(selector => selector.trim().startsWith('.mt-app') ? selector.trim() : '.mt-app ' + selector.trim()).join(',') + '{' + body + '}'
+        cursor = end
+      }
+      return result
+    }
+    const FINAL_CLOUD_CSS = `
+.mt-app [hidden]{display:none!important}.mt-body{overflow:auto;flex:1;min-height:0}.mt-body>*{max-width:1240px;margin-left:auto;margin-right:auto}.mt-topbar{color:#2a3342}.mt-source-tabs{width:100%;display:grid;grid-template-columns:repeat(3,1fr);background:#f5f7fc;padding:5px;gap:5px}.mt-source-tabs button{padding:12px 8px;text-align:center;border-radius:9px}.mt-source-tabs button[aria-pressed=true]{background:#fff;color:#2563eb;box-shadow:0 2px 6px rgba(16,28,48,.07)}
+.mt-context{display:grid;grid-template-columns:minmax(220px,1.4fr) minmax(170px,1fr) auto;gap:18px;align-items:end}.mt-context .mt-select{width:100%}.mt-minute-body{font-size:13px;background:#fff;color:#2a3342}.mt-preview .mt-h3{margin:0}.mt-rec-center{display:flex;align-items:center;flex-direction:column;gap:12px;padding:16px}.mt-record-knob{border:0;border-radius:50%;width:76px;height:76px;color:#fff;background:linear-gradient(135deg,#2563eb,#5595f8);font-size:30px;cursor:pointer;box-shadow:0 5px 16px rgba(37,99,235,.23)}.mt-record-knob.recording{background:#df5555}.mt-record-knob:disabled{opacity:.45;cursor:not-allowed}.mt-seek{flex:1;min-width:100px;accent-color:#2563eb}
+.mt-livewrap{background:#0e1c30;color:#9fc3ef;min-height:130px;padding:14px;border-radius:10px;max-height:260px;overflow:auto;font:12px/1.9 ui-monospace,SFMono-Regular,monospace}.mt-livewrap .mt-muted{color:#9fc3ef}.mt-caption-float{position:fixed;z-index:1200;width:min(420px,calc(100vw - 16px));height:min(280px,calc(100vh - 16px));display:flex;flex-direction:column;background:#0e1c30;border:1px solid #2b4668;border-radius:12px;box-shadow:0 14px 40px rgba(0,0,0,.25);color:#9fc3ef;overflow:hidden}.mt-caption-handle{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:move;touch-action:none}.mt-caption-float .mt-livewrap{flex:1;min-height:0}.mt-caption-handle .mt-btn{background:#223b58;border-color:#355576;color:#d6e6fb}
+.mt-task-model{position:relative}.mt-task-model summary{list-style:none;cursor:pointer;max-width:310px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mt-task-model-menu{position:absolute;bottom:calc(100% + 8px);left:0;z-index:100;min-width:250px;max-width:min(390px,calc(100vw - 48px));max-height:320px;overflow:auto;border:1px solid #d3dae5;background:#fff;border-radius:10px;padding:10px;box-shadow:0 10px 30px rgba(16,28,48,.17)}.mt-task-model-menu button{display:block;width:100%;text-align:left;margin:5px 0}.mt-task-model-menu b{display:block;margin-top:8px;color:#5f6b7e;font-size:12px}
+.mt-qa-grid{display:block;min-width:0}.mt-history{padding:14px;display:flex;flex-direction:column;gap:12px;position:sticky;top:0;max-height:calc(100vh - 200px);overflow:auto}.mt-session{display:flex;flex-direction:column;gap:3px;min-width:0;width:100%;padding:9px;border:1px solid transparent;border-radius:9px;background:#f5f7fb;cursor:pointer;text-align:left}.mt-session.active{background:#eaf1fe;border-color:#c8dcff;color:#2563eb}.mt-session b{font-size:12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mt-session span{font-size:10px;color:#94a0b2}.mt-askwrap{background:#fff;padding:16px;border:1px solid #e6eaf1;border-radius:14px}.mt-create{margin:18px 0}.mt-create-more>summary{display:inline-flex;list-style:none;cursor:pointer;margin-bottom:12px}.mt-agenda-row{display:grid;grid-template-columns:120px 1.5fr 110px 1fr auto;gap:8px}.mt-calendar-scroll{overflow-x:auto}.mt-cal{min-width:680px}.mt-mcard::before{display:none}.mt-mcard{padding-left:20px}.mt-day-more{cursor:pointer;background:#eaf1fe;color:#2563eb;border:0;border-radius:5px;padding:2px 6px}.mt-day-meeting{display:flex;align-items:flex-start;flex-direction:column;gap:5px;padding:12px;border:1px solid #e6eaf1;border-radius:10px;background:#fff;cursor:pointer;text-align:left}.mt-day-meeting:hover{background:#f5f8ff}
+@media(max-width:1080px){.mt-context{grid-template-columns:1fr 1fr}.mt-context>.mt-row{grid-column:1/-1}.mt-qa-grid{grid-template-columns:1fr}.mt-history{position:static;max-height:230px}.mt-agenda-row{grid-template-columns:1fr 1fr}}
+@media(max-width:860px){.mt-context{grid-template-columns:1fr}.mt-minute-tools{gap:5px}.mt-minute-tools>.mt-btn{padding:6px 9px}.mt-source-tabs button{font-size:12px}.mt-card{padding:16px}.mt-grid2,.mt-grid3{grid-template-columns:1fr}.mt-agenda-row{grid-template-columns:1fr}.mt-task-model summary{max-width:210px}}
+`
+    
+     const NAVIGATION_CSS = `
+.mt-app{flex-direction:row;position:relative}
+.mt-stage{display:flex;flex:1;min-width:0;min-height:0;flex-direction:column}
+.mt-rail{width:216px}
+.mt-railchild{margin-left:12px;width:calc(100% - 12px);font-size:12px}
+.mt-railqa{margin:0 0 6px 12px;padding:3px 0 4px 8px;border-left:1px solid var(--dsw-alias-border-l1);min-height:0;max-height:40vh;overflow-y:auto;overflow-x:hidden;flex:none}
+.mt-railqa .mt-railsection{padding:2px 8px 7px}
+.mt-railqa .mt-railitem{font-size:11.5px;padding:6px 7px}
+.mt-railqa .mt-railrow{display:flex;align-items:center;gap:3px}
+.mt-railqa .mt-session{flex:1;min-width:0;text-align:left}
+.mt-railqa .mt-railremove{border:0;background:none;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.mt-railqa .mt-railremove:hover{color:var(--dsw-alias-state-error-primary)}
+.mt-livewrap,.mt-caption-float{background:#fff;color:#243247;border:1px solid #d9e1eb;box-shadow:0 4px 18px rgba(26,43,66,.08);font:13px/1.6 system-ui,sans-serif}
+.mt-livewrap{display:flex;flex-direction:column;gap:10px;min-height:130px;padding:14px;max-height:260px}
+.mt-livewrap .mt-muted,.mt-caption-handle{color:#506178}.mt-caption-float .mt-livewrap{border:0;box-shadow:none}
+.mt-caption-handle{border-bottom:1px solid #e4e9f0;background:#fff}.mt-caption-handle .mt-btn{background:#fff;border-color:#d1dbe8;color:#243247}
+.mt-caption-row{display:flex;align-items:flex-start;gap:10px;min-width:0}.mt-caption-avatar{width:32px;height:32px;flex:none;border-radius:50%;background:#edf3ff;color:#2759a5;display:grid;place-items:center;font-weight:700;font-size:13px;border:1px solid #d5e3fa}
+.mt-caption-bubble{min-width:0;max-width:calc(100% - 42px);background:#fff;color:#243247;border:1px solid #e0e7f0;border-radius:5px 12px 12px 12px;box-shadow:0 2px 9px rgba(24,43,75,.07);padding:8px 11px;word-break:break-word}.mt-caption-meta{display:flex;align-items:center;gap:7px;color:#627187;font-size:11px;margin-bottom:3px;flex-wrap:wrap}.mt-caption-bubble.interim{border-style:dashed}.mt-caption-bubble.interim .mt-caption-text{color:#536278}
+.mt-caption-rename{border:0;background:transparent;padding:1px 2px;color:#244e91;text-decoration:underline;cursor:pointer}.mt-caption-rename:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.mt-railgroup{display:flex;flex-direction:column;min-height:0}
+.mt-railqa .mt-session{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mt-railqa .mt-railrow{min-width:0}
+.mt-rail-toggle,.mt-rail-shade{display:none}
+.mt-railitem:focus-visible,.mt-railback:focus-visible,.mt-railqa button:focus-visible,.mt-rail-toggle:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+@media(max-width:900px){
+ .mt-railgroup{display:none}.mt-app.mt-rail-expanded .mt-railgroup{display:flex}.mt-railchild{margin:0;width:100%}
+ .mt-app.mt-rail-expanded .mt-rail{position:absolute;z-index:1202;top:0;bottom:0;left:0;width:min(280px,calc(100vw - 72px));box-shadow:8px 0 24px rgba(0,0,0,.18)}
+ .mt-app.mt-rail-expanded .mt-brand{justify-content:flex-start;padding:13px 15px}
+ .mt-app.mt-rail-expanded .mt-brandname,.mt-app.mt-rail-expanded .mt-railsection,.mt-app.mt-rail-expanded .mt-railstats,.mt-app.mt-rail-expanded .mt-railitem .txt,.mt-app.mt-rail-expanded .mt-railback .txt{display:initial}
+ .mt-app.mt-rail-expanded .mt-railitem{justify-content:space-between;padding:9px 11px}
+ .mt-app.mt-rail-expanded .mt-railitem .ic{gap:9px}
+ .mt-app.mt-rail-expanded .mt-railqa{display:block}
+ .mt-app.mt-rail-expanded .mt-railchild{margin-left:12px;width:calc(100% - 12px)}
+ .mt-app.mt-rail-expanded .mt-rail-toggle{display:block;align-self:center;margin:8px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:8px;cursor:pointer}
+ .mt-app.mt-rail-expanded .mt-rail-shade{display:block;position:absolute;inset:0;background:rgba(0,0,0,.3);z-index:1201;border:0;cursor:pointer}
+}
+`
+const QA035_CSS = "\n.mt-app .mt-askwrap,.mt-app .mt-askbody,.mt-app .mt-askpanel{min-width:0;box-sizing:border-box;max-width:100%}\n.mt-app .mt-askwrap{display:flex;flex-direction:column;min-height:0;padding:12px}\n.mt-app .mt-asktop,.mt-app .mt-asksub{display:flex;flex-wrap:wrap;min-width:0;max-width:100%;gap:8px;box-sizing:border-box;flex:none}\n.mt-app .mt-asktop>.mt-select{flex:1 1 190px;min-width:0;max-width:100%;width:0}\n.mt-app .mt-asktop>.mt-muted{flex:1 1 190px;min-width:0;overflow-wrap:anywhere}\n.mt-app .mt-asksub .mt-select{flex:1 1 190px;min-width:0;width:0;max-width:100%;box-sizing:border-box}\n.mt-app .mt-asksub>.mt-btn,.mt-app .mt-asksub>.mt-hintchip,.mt-app .mt-asktop>.mt-btn{max-width:100%;white-space:normal;overflow-wrap:anywhere}\n.mt-app .mt-askbody,.mt-app .mt-askpanel{display:flex;flex:1;flex-direction:column;min-height:0}\n.mt-app .mt-msgs{flex:1;min-width:0;min-height:0;overflow-y:auto;overflow-wrap:anywhere}\n.mt-app .mt-inputbar{min-width:0;max-width:100%;box-sizing:border-box;flex-wrap:wrap}\n.mt-app .mt-inputbar textarea{min-width:0;flex:1 1 140px;width:0;box-sizing:border-box}\n.mt-app .mt-askdock{background:var(--dsw-alias-bg-layer-1);min-width:0;max-width:100%}\n.mt-app .mt-attachrow,.mt-app .mt-msgsrc{min-width:0;max-width:100%;flex-wrap:wrap;overflow-wrap:anywhere}\n.mt-app .mt-qa-message035{display:flex;align-items:flex-start;gap:8px;width:100%;min-width:0;margin:10px 0}\n.mt-app .mt-qa-message035.user{flex-direction:row-reverse}\n.mt-app .mt-qa-avatar035{width:36px;height:36px;flex:none}\n.mt-app .mt-qa-message035>.mt-bubble{min-width:0;max-width:calc(100% - 44px);margin:0;overflow-wrap:anywhere}\n.mt-app .mt-qa-message035>.mt-qa-col035{display:flex;flex-direction:column;min-width:0;max-width:calc(100% - 44px)}\n.mt-app .mt-qa-message035.user>.mt-qa-col035{align-items:flex-end}\n.mt-app .mt-qa-col035>.mt-bubble{min-width:0;max-width:100%;margin:0;overflow-wrap:anywhere}\n.mt-app .mt-qa-time035{font-size:11px;line-height:1.5;margin-top:3px;color:var(--dsw-alias-label-secondary);opacity:.85;font-variant-numeric:tabular-nums;white-space:nowrap}\n.mt-app .mt-qa-message035 a,.mt-app .mt-qa-message035 .mt-linkchip{overflow-wrap:anywhere;max-width:100%;white-space:normal}\n.mt-app .mt-qa-message035 pre{max-width:100%;overflow:auto}\n.mt-app .mt-context{container-type:inline-size;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start}\n.mt-app .mt-context>.mt-field{min-width:0;max-width:100%}\n.mt-app .mt-context .mt-select,.mt-app .mt-word-pick035{height:36px;border-radius:8px;min-width:0;max-width:100%;width:100%;box-sizing:border-box}\n.mt-app .mt-word-pick035{display:flex;align-items:center;gap:6px;border:1px solid var(--dsw-alias-border-l1);padding:0 8px;background:var(--dsw-alias-bg-layer-1)}\n.mt-app .mt-word-pick035>.mt-btn{border:0;background:none;padding:3px;flex:none}\n.mt-app .mt-word-pick035>.mt-chip{flex:1;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.mt-app .mt-context>.mt-context-status035,.mt-app .mt-context>.mt-notice{grid-column:1/-1}\n@container(max-width:760px){.mt-app .mt-context>.mt-field{grid-column:1/-1}}\n@media(max-width:600px){.mt-app .mt-context{grid-template-columns:minmax(0,1fr)}.mt-app .mt-qa-avatar035{width:30px;height:30px}.mt-app .mt-qa-message035>.mt-bubble{max-width:calc(100% - 38px)}.mt-app .mt-qa-message035>.mt-qa-col035{max-width:calc(100% - 38px)}}\n"
+const QA_INPUT_WIDTH_FIX_CSS = `
+.mt-app .mt-inputbar{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;width:100%;min-width:0;max-width:100%;box-sizing:border-box}
+.mt-app .mt-inputbar>textarea{grid-column:1 / -1;grid-row:1;width:100%;min-width:0;max-width:100%;box-sizing:border-box}
+.mt-app .mt-inputbar>.mt-clipbtn{grid-column:1;grid-row:2;justify-self:start}
+.mt-app .mt-inputbar>.mt-btn{grid-column:2;grid-row:2;justify-self:end;max-width:100%;box-sizing:border-box}
+`
+const KB_COMPOSER_CSS = `
+/* ================= KB 同款输入框（kbComposer-20261005）=================
+   移植自 dsh-raganything-kb/lib/client.js 的会话输入框：圆角卡片 + 底部工具条
+   （+ 附件 / @ 引用 / 模型 / 圆形发送）+ 绿色虚线落点。颜色全部走 --dsw-alias-*
+   令牌，深浅色跟随 DSH「设置-通用设置-外观」；此处不写死任何品牌色。 */
+/* kbcInputBg-20261005：输入框背景与知识库输入框一致（--kb-input-major = #fff） */
+/* kbcInputStroke-20261005：描边与阴影与知识库输入框一致（--kb-input-stroke=rgba(0,0,0,.1) + 双层柔光） */
+.mt-app .mt-askdock{position:relative;box-sizing:border-box;border:0;border-radius:22px;background:var(--dsw-alias-bg-layer-1);box-shadow:0 0 0 .5px rgba(0,0,0,.1),0 4px 16px 0 rgba(0,0,0,.03),0 0 24px 0 rgba(0,0,0,.03);padding:8px 0 0;display:flex;flex-direction:column;gap:10px}
+.mt-app .mt-askwrap:has(.mt-dropoverlay) .mt-askdock{outline:2px dashed var(--dsw-alias-state-success-primary);outline-offset:-6px}
+.mt-app .mt-askdock .mt-asksub{padding:0 10px;gap:8px}
+.mt-app .mt-askdock .mt-inputbar{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto auto;grid-template-rows:auto auto;align-items:center;column-gap:12px;row-gap:2px;padding:2px 8px 6px;border:0;background:transparent}
+.mt-app .mt-askdock .mt-inputbar>textarea{grid-column:1 / -1;grid-row:1;box-sizing:border-box;width:100%;min-width:0;min-height:36px;max-height:200px;height:auto;margin:0;padding:4px 12px 0 14px;background:transparent;border:0;border-radius:0;color:var(--dsw-alias-label-primary);caret-color:var(--dsw-alias-state-business-primary);font-size:14px;line-height:24px;resize:none}
+.mt-app .mt-askdock .mt-inputbar>textarea::placeholder{color:var(--dsw-alias-label-tertiary)}
+/* 聚焦不要蓝框（与 KB 第 6 轮同款处理）：只豁免输入框，按钮的键盘焦点环保留 */
+.mt-app .mt-askdock .mt-inputbar>textarea:focus,.mt-app .mt-askdock .mt-inputbar>textarea:focus-visible{outline:none!important;box-shadow:none!important;border:0}
+.mt-app .mt-kbc-icon{grid-row:2;width:28px;height:28px;flex:none;display:grid;place-items:center;border:0;border-radius:999px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);font-size:13px;font-weight:600;line-height:1;cursor:pointer}
+.mt-app .mt-kbc-icon:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-active)}
+.mt-app .mt-kbc-icon:disabled{opacity:.45;cursor:default}
+.mt-app .mt-askdock .mt-inputbar .mt-clipbtn{grid-column:1}
+.mt-app .mt-askdock .mt-inputbar .mt-kbc-at{grid-column:2}
+.mt-app .mt-kbc-spacer{grid-column:3;grid-row:2;min-width:0}
+.mt-app .mt-askdock .mt-inputbar>.mt-select{grid-column:4;grid-row:2;width:auto;min-width:0;max-width:210px;height:28px;padding:0 4px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:13px}
+.mt-app .mt-askdock .mt-inputbar>.mt-select:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.mt-app .mt-askdock .mt-inputbar>.mt-muted{grid-column:4;grid-row:2;max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.mt-app .mt-askdock .mt-inputbar>.mt-btn.primary{grid-column:5;grid-row:2;width:34px;height:34px;padding:0;display:grid;place-items:center;border:0;border-radius:999px;background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground);font-size:15px;line-height:1;transform:translateY(-2px)}
+.mt-app .mt-askdock .mt-inputbar>.mt-btn.primary:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover)}
+.mt-app .mt-askdock .mt-inputbar>.mt-btn.primary:disabled{opacity:.4;cursor:default}
+.mt-app .mt-askdock .mt-inputbar>.mt-btn.stop{grid-column:5;grid-row:2;width:34px;height:34px;padding:0;display:grid;place-items:center;border-radius:999px}
+/* 拖拽落点：KB 同款绿色胶囊提示（.mt-dropoverlay 仍由原实现渲染，这里只换外观） */
+.mt-app .mt-askwrap>.mt-dropoverlay{position:absolute;left:50%;top:-30px;right:auto;bottom:auto;width:auto;height:auto;transform:translateX(-50%);z-index:9;display:block;padding:6px 12px;border:0;border-radius:999px;background:var(--dsw-alias-state-success-primary);color:var(--dsw-alias-label-primary-foreground);font-size:12px;font-weight:600;white-space:nowrap;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+/* @ 引用会议菜单 */
+.mt-app .mt-kbc-menu{position:absolute;left:10px;right:10px;bottom:70px;z-index:12;max-height:300px;overflow:auto;padding:6px;border:1px solid var(--dsw-alias-border-l1);border-radius:14px;background:var(--dsw-alias-bg-layer-1);box-shadow:0 10px 30px rgba(0,0,0,.16)}
+.mt-app .mt-kbc-menuhead{padding:6px 10px 8px;color:var(--dsw-alias-label-tertiary);font-size:12px}
+.mt-app .mt-kbc-menuitem{display:block;width:100%;text-align:left;padding:8px 10px;border:0;border-radius:9px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;cursor:pointer}
+.mt-app .mt-kbc-menuitem:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.mt-app .mt-kbc-menuitem.on{background:var(--dsw-alias-state-business-tertiary);color:var(--dsw-alias-state-business-primary)}
+.mt-app .mt-kbc-menuempty{padding:8px 10px;color:var(--dsw-alias-label-tertiary);font-size:13px}
+/* ================= kbcAsk-20261005：问答输入区四项调整 ================= */
+/* ① 发送按钮左侧：模型下拉真正可见（原内联 width:0 在 grid 轨道里把列压成 8px） */
+.mt-app .mt-askdock .mt-inputbar>.mt-kbc-model{grid-column:4;grid-row:2;display:flex;align-items:center;gap:4px;min-width:0;max-width:260px}
+.mt-app .mt-askdock .mt-inputbar>.mt-kbc-model>.mt-select{width:auto;min-width:96px;max-width:230px;height:28px;padding:0 4px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:13px;text-overflow:ellipsis}
+.mt-app .mt-askdock .mt-inputbar>.mt-kbc-model>.mt-select:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.mt-app .mt-askdock .mt-inputbar>.mt-kbc-model>.mt-muted{max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary);font-size:13px}
+/* ② 卡片下沿贴底不动，把手贴在卡片上沿（向上拖 = 输入区变高） */
+.mt-app .mt-askdock{max-height:100%}
+.mt-app .mt-askdock>.mt-resizer{position:absolute;left:0;right:0;top:-8px;height:16px;z-index:3}
+.mt-app .mt-askdock.mt-askdock-fixed .mt-inputbar{flex:1;min-height:0;grid-template-rows:minmax(36px,1fr) auto}
+.mt-app .mt-askdock.mt-askdock-fixed .mt-inputbar>textarea{height:100%;max-height:none;overflow-y:auto}
+/* ③ 输入提示挪到卡片上方一行，不再占卡片下方空间 */
+.mt-app .mt-kbc-hint{margin-left:auto;color:var(--dsw-alias-label-tertiary);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* ④ 多行内容（新建会议模板）自适应加高时内部滚动兜底 */
+.mt-app .mt-askdock .mt-inputbar>textarea{overflow-y:auto}
+/* ================= kbcCtl-20261005：输入框内三控件与知识库 composerBar 同款 ================= */
+/* 附件「＋」/ 引用「@」：知识库 --kb-input-selector #f5f6f7 + 15px/600 + padding 0，hover --accent-soft */
+.mt-app .mt-askdock .mt-inputbar .mt-kbc-icon{width:28px;height:28px;padding:0;border:0;border-radius:999px;background:#f5f6f7;color:var(--dsw-alias-label-primary);font-size:15px;font-weight:600;line-height:1}
+.mt-app .mt-askdock .mt-inputbar .mt-kbc-icon:hover:not(:disabled){background:#eaf1fe}
+/* 模型下拉：知识库 .modelBtn 的 padding/字重/行高/最大宽与 hover */
+.mt-app .mt-askdock .mt-inputbar>.mt-kbc-model>.mt-select{max-width:210px;padding:0 4px 0 8px;font-size:13px;font-weight:500;line-height:20px}
+.mt-app .mt-askdock .mt-inputbar>.mt-kbc-model>.mt-select:hover{background:#eaf1fe}
+/* 发送：知识库 --kb-send-fill #4176e6 / hover --kb-send-hover #7aaaff */
+.mt-app .mt-askdock .mt-inputbar>.mt-btn.primary{background:#4176e6}
+.mt-app .mt-askdock .mt-inputbar>.mt-btn.primary:hover:not(:disabled){background:#7aaaff}
+`
+const MEETING_CSS = scopeMeetingCss(CSS.replace(/html\[data-mt-resizing\],html\[data-mt-resizing\] \*\{[^}]*\}/, '') + CLOUD_CSS + FINAL_CLOUD_CSS + NAVIGATION_CSS + QA035_CSS + QA_INPUT_WIDTH_FIX_CSS + KB_COMPOSER_CSS)
+
     const dict = {
       zh: {
         title: '会议助手', subtitle: '会议日程与 AI 议程、模板纪要生成与签署归档、可溯源会议问答', back: '返回主页',
@@ -319,8 +620,8 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
         startRec: '开始录音', finishAndGenerate: '结束并生成纪要', cancelRec: '取消', recLive: '录音中',
         recHint: '请开始说话，语音将实时转写为文字…', micDenied: '无法访问麦克风，请检查浏览器录音权限',
         liveUnsupported: '当前浏览器不支持实时录音转写（需 Chrome/Edge 的 Web Speech 与 MediaRecorder），请改用「上传录音」或「粘贴文本」模式。',
-        liveAutoHint: '录音结束后将按所选模板自动生成纪要', downloadRec: '下载录音', recEmpty: '转写内容为空，未生成纪要',
-        uploadHint: '点击选择或拖入录音文件（MP3 / M4A / WAV / AAC / OGG / WEBM / AMR / FLAC，≤500MB）', uploadProgress: '上传中',
+        liveAutoHint: '停止只封存完整录音；点击生成后才上传并由阿昆正式全文识别', downloadRec: '下载录音', recEmpty: '转写内容为空，未生成纪要',
+        uploadHint: '点击选择或拖入录音文件（MP3 / M4A / WAV / AAC / OGG / WEBM / AMR / FLAC，≤500MiB）', uploadProgress: '上传中',
         uploadDone: '录音已上传', recTooBig: '录音文件超过 500MB 上限', saveTranscript: '保存转写', savedTranscript: '转写已保存',
         importTxtSrt: '导入 .txt/.srt', playTranscribe: '播放并实时转写（实验性）', stopPlayTranscribe: '停止',
         playTranscribeHint: '实验性：需外放且环境安静',
@@ -337,7 +638,7 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
         srcTitle: '引文溯源', srcSource: '引文来源', srcStamp: '精确时间戳 / 定位', srcText: '原文片段', close: '我知道了', quote: '引用',
         loading: '加载中…', requestFailed: '请求失败', meetingDeleted: '会议已删除', deleteSessionFirst: '已删除会话', detailJumpAsk: (t) => `请针对《${t}》的核心共识与待办事项做全面梳理`,
         agendaFromMeeting: '议程', none: '—',
-        newChat: '新建对话', histChat: '历史对话', resizeHint: '拖动调整对话区高度（520 ~ 2200px，自动记忆）',
+        newChat: '新建对话', histChat: '历史对话', resizeHint: '拖动上沿调整输入框高度，双击恢复随内容自适应',
         attachBtn: '添加附件', attachTip: '支持 .pdf / .docx / .xlsx / .txt / .md，单文件 ≤30MB', attUploading: '附件上传中…',
         attTooBig: '文件超过 30MB 上限', attUnsupported: '不支持的文件类型（仅 .pdf / .docx / .xlsx / .txt / .md）',
         attUploadFail: '附件上传失败', attRemove: '移除附件', dropHint: '松开以添加附件',
@@ -371,9 +672,9 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
         startRec: 'Start recording', finishAndGenerate: 'Finish & generate', cancelRec: 'Cancel', recLive: 'Recording',
         recHint: 'Start speaking — your speech is transcribed in real time…', micDenied: 'Microphone unavailable — please check browser permission',
         liveUnsupported: 'Live transcription needs Web Speech + MediaRecorder (e.g. Chrome/Edge). Please use "Upload audio" or "Paste text" instead.',
-        liveAutoHint: 'Minutes will be generated automatically with the selected template when the recording finishes.',
+        liveAutoHint: 'Stopping retains the complete recording. Only explicit generation uploads and transcribes it.',
         downloadRec: 'Download audio', recEmpty: 'Transcript is empty — minutes not generated',
-        uploadHint: 'Click or drop an audio file (MP3 / M4A / WAV / AAC / OGG / WEBM / AMR / FLAC, ≤500MB)', uploadProgress: 'Uploading',
+        uploadHint: 'Click or drop an audio file (MP3 / M4A / WAV / AAC / OGG / WEBM / AMR / FLAC, ≤500MiB)', uploadProgress: 'Uploading',
         uploadDone: 'Recording uploaded', recTooBig: 'Audio file exceeds the 500MB limit', saveTranscript: 'Save transcript', savedTranscript: 'Transcript saved',
         importTxtSrt: 'Import .txt/.srt', playTranscribe: 'Play & live transcribe (experimental)', stopPlayTranscribe: 'Stop',
         playTranscribeHint: 'Experimental: requires speaker output and a quiet room',
@@ -390,7 +691,7 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
         srcTitle: 'Citation source', srcSource: 'Source', srcStamp: 'Timestamp / locator', srcText: 'Original snippet', close: 'Got it', quote: 'Cite',
         loading: 'Loading…', requestFailed: 'Request failed', meetingDeleted: 'Meeting deleted', deleteSessionFirst: 'Session deleted', detailJumpAsk: (t) => `Summarize the key consensus and action items of "${t}"`,
         agendaFromMeeting: 'Agenda', none: '—',
-        newChat: 'New chat', histChat: 'History', resizeHint: 'Drag to resize the chat area (520 ~ 2200px, remembered)',
+        newChat: 'New chat', histChat: 'History', resizeHint: 'Drag the top edge to resize the input box; double-click to reset',
         attachBtn: 'Attach files', attachTip: 'PDF / DOCX / XLSX / TXT / MD, ≤30MB each', attUploading: 'Uploading attachments…',
         attTooBig: 'File exceeds the 30MB limit', attUnsupported: 'Unsupported file type (.pdf / .docx / .xlsx / .txt / .md only)',
         attUploadFail: 'Failed to upload attachment', attRemove: 'Remove attachment', dropHint: 'Release to attach',
@@ -412,9 +713,73 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
       } catch {
         /* 非 JSON 响应 */
       }
-      if (!res.ok || (data && data.error)) throw new Error((data && (data.reason || data.error)) || `HTTP ${res.status}`)
+      if (!res.ok || !data || data.error || data.ok === false) {
+        const error = new Error((data && (data.reason || data.message || data.error)) || `HTTP ${res.status}`)
+        error.code = data && (data.error || data.code); error.status = res.status
+        throw error
+      }
       return data
     }
+// Compiled into the existing classic meeting factory. No model or upload substitution.
+async function generateWithProgress035(body, { signal, onProgress, resumeTaskId } = {}) {
+  signal?.throwIfAborted()
+  let taskId, cancelled = false, cancellation
+  const report = task => {
+    const p = task.progress || {}, phase = task.state === "completed" ? task.state : p.phase || task.state
+    const labels = { committing: "正在提交纪要；提交阶段不再接受取消", queued: "等待纪要处理", extract: "正在逐段提取与回查原文", write: "正在按议题生成并核验", word: "正在生成Word并提交纪要", running: "纪要任务处理中", completed: "纪要任务完成" }
+    const segments = Number.isSafeInteger(p.plannedSegments) ? ` · 已处理分段 ${p.processedSegments || 0}/${p.plannedSegments}` : ""
+    const subsegments = Number.isSafeInteger(p.processedSubsegments) ? ` · 子段 ${p.processedSubsegments}` : ""
+    const calls = Number.isSafeInteger(p.completionAttempts) ? ` · 模型调用 ${p.completionAttempts} / 合格缓存 ${p.cacheHits || 0}` : ""
+    const pending = Number.isSafeInteger(p.unresolvedCount) ? ` · 待复核 ${p.unresolvedCount}` : ""
+    const diagnostic = p.lastErrorCode ? ` · ${p.lastFailedSegment || "分段"}: ${p.lastErrorCode}（原文保留）` : ""
+    onProgress?.({ ...task, label: (labels[phase] || "纪要任务处理中") + segments + subsegments + calls + pending + diagnostic })
+  }
+  const cancel = () => {
+    if (cancelled) return cancellation
+    if (!taskId) return Promise.resolve({accepted:false})
+    cancelled = true
+    cancellation = fetch(API + "/generation-tasks/" + encodeURIComponent(taskId), { method: "DELETE", credentials: "same-origin", signal: AbortSignal.timeout(15000) })
+      .then(async response=>({accepted:response.ok && (await response.json()).task?.state === "cancelled"})).catch(()=>({accepted:false}))
+    return cancellation
+  }
+  const pause = () => new Promise((resolve, reject) => {
+    const done = () => { signal?.removeEventListener("abort", aborted); resolve() }
+    const timer = setTimeout(done, 1200)
+    const aborted = () => { clearTimeout(timer); signal?.removeEventListener("abort", aborted); reject(signal.reason || new DOMException("已取消", "AbortError")) }
+    if (signal?.aborted) aborted(); else signal?.addEventListener("abort", aborted, { once: true })
+  })
+  try {
+    // Learn the server task ID even if the operator cancels while admission is pending.
+    const route = resumeTaskId ? "/generation-tasks/" + encodeURIComponent(resumeTaskId) + "/retry" : "/generation-tasks"
+    const admitted = await request(route, { ...json(resumeTaskId ? {} : body), signal: AbortSignal.timeout(30000) })
+    let task = admitted.task
+    if (!task || !/^[a-f0-9-]{36}$/.test(task.task_id)) throw new Error("服务器未返回合法纪要任务，未显示生成成功。")
+    taskId = task.task_id
+    signal?.addEventListener("abort", cancel, { once: true })
+    if (signal?.aborted) { cancel(); signal.throwIfAborted() }
+    for (;;) {
+      signal?.throwIfAborted(); report(task)
+      if (task.state === "completed") {
+        if (!task.result?.minutes?.minutes_id) throw new Error("纪要提交回执缺失，未显示成功。")
+        return task.result
+      }
+      if (["unresolved", "cancelled", "interrupted"].includes(task.state)) {
+        const error = new Error(task.result?.reason || "纪要任务未通过或服务已中断；原文与缓存保留，请重试。")
+        error.code = task.result?.error || "GENERATION_TASK_" + task.state.toUpperCase(); error.task_id = taskId; error.grounding = task.result?.grounding
+        throw error
+      }
+      await pause()
+      const options = { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000) }
+      task = (await request("/generation-tasks/" + encodeURIComponent(taskId), options)).task
+      if (!task || task.task_id !== taskId) throw new Error("纪要任务身份发生变化，停止读取结果。")
+    }
+  } catch (error) {
+    if (signal?.aborted && !(await cancel())?.accepted) error = Object.assign(new Error("取消未获服务器确认；任务可能正在提交，请恢复任务读取最新回执。"), {code:"TASK_CANCELLATION_UNCONFIRMED"})
+    if (taskId) error.task_id = taskId
+    throw error
+  } finally { signal?.removeEventListener("abort", cancel) }
+}
+
     const json = (data) => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
     const put = (data) => ({ method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
     const patch = (data) => ({ method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
@@ -489,6 +854,38 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
       !query ||
       [m.title, m.location, ...(Array.isArray(m.tags) ? m.tags : []), ...peopleOf(m)].join(' ').toLowerCase().includes(query.toLowerCase())
 
+    function minutesTaskBody({ transcript, template, meetingId = '', recordingId = '', source = 'ai', model = null, wordTemplateId = '' }) {
+      return Object.freeze({ transcript, template_type: template, source, word_export: true,
+        ...(wordTemplateId ? { word_template_id: wordTemplateId } : {}),
+        ...(meetingId ? { meeting_id: meetingId } : {}), ...(recordingId ? { recording_id: recordingId } : {}),
+        ...(model ? { provider: model.provider, model: model.model } : {}),
+      })
+    }
+    function clampCaptionPosition(x, y, width, height) {
+      return { x: Math.max(8, Math.min(x, Math.max(8, width - Math.min(420, width - 16) - 8))),
+        y: Math.max(8, Math.min(y, Math.max(8, height - Math.min(280, height - 16) - 8))) }
+    }
+    // Module-owned memory retains complete audio across this module's route unmount/remount, not page reload.
+    let retainedLiveRound = null
+    let retainedMinutesSnapshot = null
+
+    function TaskModelPicker({ catalog, value, onChange, disabled = false }) {
+      const label = value ? `${value.provider} / ${value.model}` : '服务端纪要默认'
+      return h('details', { className: 'mt-task-model' },
+        h('summary', { className: 'mt-btn small', onClick: (event) => { if (disabled) event.preventDefault() }, 'aria-disabled': disabled }, label, ' ▴'),
+        h('div', { className: 'mt-task-model-menu' },
+          h('button', { className: 'mt-btn small', disabled, onClick: (event) => { onChange(null); event.currentTarget.closest('details').open = false } }, '服务端纪要默认（不改全局）'),
+          catalog.state === 'loading' ? h('div', { className: 'mt-muted' }, '正在加载真实模型目录…') : null,
+          catalog.state === 'error' ? h('div', { className: 'mt-notice' }, '目录读取失败；可重试，指定模型不得假切换。') : null,
+          catalog.groups.map(group => h('div', { key: group.id },
+            h('b', null, group.name || group.id),
+            group.models.map(model => h('button', { key: model.id, className: 'mt-btn small' + (value && value.provider === group.id && value.model === model.id ? ' primary' : ''), disabled, onClick: (event) => { onChange({ provider: group.id, model: model.id }); event.currentTarget.closest('details').open = false } }, model.name || model.id)),
+          )),
+          catalog.state === 'ready' && !catalog.groups.length ? h('div', { className: 'mt-muted' }, '暂无可选模型') : null,
+        ),
+      )
+    }
+
     function Toasts({ toasts }) {
       return h('div', { className: 'mt-toastwrap' }, toasts.map((t) => h('div', { key: t.id, className: `mt-toast ${t.type}` }, t.message)))
     }
@@ -530,7 +927,9 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
     const WEEKDAYS_ZH = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
     const WEEKDAYS_EN = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-    function ScheduleView({ t, lang, meetings, onDetail, onNew, gotoMinutes, gotoAsk, togglePin }) {
+    function ScheduleView({ t, lang, meetings, onDetail, onNew, gotoMinutes, gotoAsk, togglePin, showToast, refreshMeetings }) {
+      const [creating, setCreating] = useState(false)
+      const [dayDetails, setDayDetails] = useState(null)
       const [view, setView] = useState('list')
       const [anchor, setAnchor] = useState(() => new Date())
       const [pinnedOnly, setPinnedOnly] = useState(false)
@@ -638,7 +1037,7 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
             return h('div', { className: 'mt-cell' + (sameDay(d, today) ? ' today' : '') + (inMonth ? '' : ' dim'), key: d.toISOString() },
               h('div', { className: 'mt-daynum' }, d.getDate(), sameDay(d, today) ? (lang === 'en' ? ' •' : ' 今') : ''),
               list.slice(0, 3).map((m) => h('button', { className: 'mt-ev' + (m.is_pinned ? ' pinned' : ''), key: m.id, onClick: () => onDetail(m) }, (m.is_pinned ? '★ ' : '') + m.title)),
-              list.length > 3 ? h('div', { className: 'mt-evmore' }, t.more(list.length - 3)) : null,
+              list.length > 3 ? h('button', { className: 'mt-evmore mt-day-more', onClick: () => setDayDetails(d) }, t.more(list.length - 3)) : null,
               list.length
                 ? h('div', { className: 'mt-pop' },
                     h('div', { className: 'mt-muted', style: { marginBottom: 5 } }, `${d.getMonth() + 1}-${pad2(d.getDate())} · ${list.length}`),
@@ -669,15 +1068,22 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
             ),
           ),
           h('input', { className: 'mt-input', style: { width: 210 }, value: query, placeholder: t.searchPlaceholder, onChange: (e) => setQuery(e.target.value) }),
-          h('button', { className: 'mt-btn primary', onClick: onNew }, '＋ ', t.newMeeting),
+          h('button', { className: 'mt-btn primary', onClick: () => setCreating(open => !open) }, creating ? '收起新建会议' : '＋ ' + t.newMeeting),
         ),
+        creating ? h(CreateView, { t, showToast, refreshMeetings, onCreated: () => setCreating(false) }) : null,
         view === 'list' && h('div', { className: 'mt-stack' },
           filtered.length === 0
             ? h('div', { className: 'mt-empty' }, h('div', { style: { fontWeight: 700, marginBottom: 4 } }, t.emptySchedule), h('div', { className: 'mt-muted' }, t.emptyScheduleHint))
             : filtered.map((m) => h(MeetingCard, { m, key: m.id })),
         ),
-        view === 'week' && WeekView(),
-        view === 'month' && MonthView(),
+        view === 'week' ? h('div', { className: 'mt-calendar-scroll' }, WeekView()) : null,
+        view === 'month' ? h('div', { className: 'mt-calendar-scroll' }, MonthView()) : null,
+        dayDetails ? h(Modal, { title: dayDetails.getFullYear() + '-' + pad2(dayDetails.getMonth() + 1) + '-' + pad2(dayDetails.getDate()) + ' 会议', onClose: () => setDayDetails(null) },
+          h('div', { className: 'mt-stack' }, dayMeetings(dayDetails).map(item => h('button', { className: 'mt-day-meeting', key: item.id, onClick: () => { setDayDetails(null); onDetail(item) } },
+            h('b', null, item.title), h('span', null, fmtTime(item.start_time) + ' — ' + fmtTime(item.end_time)),
+            h('span', { className: 'mt-muted' }, item.location || '地点未填写'),
+          ))),
+        ) : null,
       )
     }
 
@@ -791,9 +1197,10 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
 
       async function submit() {
         if (!form.title.trim()) return showToast(t.needTitle, 'warn')
-        const startIso = new Date(form.start).toISOString()
-        const endIso = new Date(form.end).toISOString()
-        if (!form.start || !form.end || Date.parse(endIso) <= Date.parse(startIso)) return showToast(t.needTime, 'warn')
+        const startMs = Date.parse(form.start), endMs = Date.parse(form.end)
+        if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(form.start) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(form.end) ||
+            !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return showToast(t.needTime, 'warn')
+        const startIso = new Date(startMs).toISOString(), endIso = new Date(endMs).toISOString()
         setBusy(true)
         try {
           const data = await request('/meetings', json({
@@ -827,71 +1234,40 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
 
       const setRow = (i, k, v) => setAgenda((rows) => rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)))
 
-      return h('div', { className: 'mt-stack', style: { maxWidth: 980 } },
-        h('div', { className: 'mt-card mt-row mt-between' },
-          h('div', null,
-            h('div', { className: 'mt-kicker' }, '✦ AI 智能辅助编排 · AI-assisted orchestration'),
-            h('div', { className: 'mt-muted', style: { marginTop: 2 } }, t.fTitle + ' · ' + t.fStart + ' · ' + t.agendaTitle),
-          ),
-          h('button', { className: 'mt-btn primary', disabled: agendaBusy, onClick: genAgenda }, agendaBusy ? h('span', { className: 'mt-spin' }) : '✦ ', agendaBusy ? t.aiAgendaBusy : t.aiAgenda),
+      return h('div', { className: 'mt-card mt-create mt-stack' },
+        h('div', { className: 'mt-row mt-between' }, h('h3', { className: 'mt-h3' }, '新建会议'), h('span', { className: 'mt-muted' }, '时间按浏览器时区 ' + Intl.DateTimeFormat().resolvedOptions().timeZone + ' 保存为ISO时间')),
+        h('div', { className: 'mt-grid2' },
+          h('label', { className: 'mt-field' }, t.fTitle, h('input', { className: 'mt-input', value: form.title, maxLength: 120, placeholder: lang0(t), onChange: e => set('title', e.target.value) })),
+          h('label', { className: 'mt-field' }, locLabel, h('input', { className: 'mt-input', value: form.location, onChange: e => set('location', e.target.value) })),
+          h('label', { className: 'mt-field' }, t.fStart, h('input', { className: 'mt-input', type: 'datetime-local', value: form.start, onChange: e => set('start', e.target.value) })),
+          h('label', { className: 'mt-field' }, t.fEnd, h('input', { className: 'mt-input', type: 'datetime-local', value: form.end, onChange: e => set('end', e.target.value) })),
+          h('label', { className: 'mt-field' }, t.fParticipants, h('input', { className: 'mt-input', value: form.participants, placeholder: '张三, 李四', onChange: e => set('participants', e.target.value) })),
         ),
-        h('div', { className: 'mt-card mt-stack' },
-          h('h3', { className: 'mt-h3' }, '🗓 ', t.navCreate),
-          h('label', { className: 'mt-row', style: { gap: 6, cursor: 'pointer' } },
-            h('input', { type: 'checkbox', checked: form.is_pinned, onChange: (e) => set('is_pinned', e.target.checked) }),
-            '⭐ ', t.fPinned,
-          ),
-          h('div', { className: 'mt-field' }, t.fTitle, h('input', { className: 'mt-input', value: form.title, maxLength: 120, placeholder: lang0(t), onChange: (e) => set('title', e.target.value) })),
-          h('div', { className: 'mt-grid2' },
-            h('div', { className: 'mt-field' }, t.fStart, h('input', { className: 'mt-input', type: 'datetime-local', value: form.start, onChange: (e) => set('start', e.target.value) })),
-            h('div', { className: 'mt-field' }, t.fEnd, h('input', { className: 'mt-input', type: 'datetime-local', value: form.end, onChange: (e) => set('end', e.target.value) })),
-          ),
-          h('div', { className: 'mt-grid2' },
-            h('div', { className: 'mt-field' }, t.fType,
-              h('select', { className: 'mt-input', value: form.type, onChange: (e) => set('type', e.target.value) },
-                [['offline', t.typeOffline], ['online', t.typeOnline], ['hybrid', t.typeHybrid]].map(([v, label]) => h('option', { key: v, value: v }, label)),
-              ),
+        h('details', { className: 'mt-create-more' },
+          h('summary', { className: 'mt-btn small' }, '更多会议信息 · 形式 / 标签 / 议程 / 材料'),
+          h('div', { className: 'mt-stack' },
+            h('div', { className: 'mt-grid2' },
+              h('label', { className: 'mt-field' }, t.fType, h('select', { className: 'mt-select', value: form.type, onChange: e => set('type', e.target.value) }, [['offline', t.typeOffline], ['online', t.typeOnline], ['hybrid', t.typeHybrid]].map(([id, label]) => h('option', { key: id, value: id }, label)))),
+              h('label', { className: 'mt-field' }, t.fTags, h('input', { className: 'mt-input', value: form.tags, placeholder: '#战略决策, Q4', onChange: e => set('tags', e.target.value) })),
+              h('label', { className: 'mt-field' }, t.meetingLink, h('input', { className: 'mt-input', value: form.meeting_link, onChange: e => set('meeting_link', e.target.value) })),
+              h('label', { className: 'mt-row' }, h('input', { type: 'checkbox', checked: form.is_pinned, onChange: e => set('is_pinned', e.target.checked) }), '⭐ ', t.fPinned),
             ),
-            h('div', { className: 'mt-field' }, locLabel, h('input', { className: 'mt-input', value: form.location, onChange: (e) => set('location', e.target.value) })),
-          ),
-          h('div', { className: 'mt-grid2' },
-            h('div', { className: 'mt-field' }, t.fParticipants, h('input', { className: 'mt-input', value: form.participants, placeholder: '张三, 李四, 王五', onChange: (e) => set('participants', e.target.value) })),
-            h('div', { className: 'mt-field' }, t.fTags, h('input', { className: 'mt-input', value: form.tags, placeholder: '#战略决策, Q4', onChange: (e) => set('tags', e.target.value) })),
-          ),
-          h('div', { className: 'mt-field' }, t.meetingLink, h('input', { className: 'mt-input', value: form.meeting_link, onChange: (e) => set('meeting_link', e.target.value) })),
-        ),
-        h('div', { className: 'mt-card mt-stack' },
-          h('h3', { className: 'mt-h3' }, '📋 ', t.agendaTitle),
-          agenda.map((row, i) =>
-            h('div', { className: 'mt-grid3', key: i },
-              h('input', { className: 'mt-input', value: row.time_range || '', placeholder: t.agendaTime + '（14:30 - 15:00）', onChange: (e) => setRow(i, 'time_range', e.target.value) }),
-              h('input', { className: 'mt-input', value: row.topic || '', placeholder: t.agendaTopic, onChange: (e) => setRow(i, 'topic', e.target.value) }),
-              h('input', { className: 'mt-input', value: row.speaker || '', placeholder: t.agendaSpeaker, onChange: (e) => setRow(i, 'speaker', e.target.value) }),
-              h('button', { className: 'mt-btn small danger', onClick: () => setAgenda((rows) => rows.filter((_, j) => j !== i)) }, '✕'),
-            ),
-          ),
-          h('div', null,
-            h('button', { className: 'mt-btn small', onClick: () => setAgenda((rows) => [...rows, { time_range: '', topic: '', speaker: '', objective: '' }]) }, '＋ ', t.addAgenda),
+            h('div', { className: 'mt-row mt-between' }, h('h3', { className: 'mt-h3' }, t.agendaTitle), h('button', { className: 'mt-btn small', disabled: agendaBusy, onClick: genAgenda }, agendaBusy ? t.aiAgendaBusy : '✦ ' + t.aiAgenda)),
+            agenda.map((row, i) => h('div', { className: 'mt-agenda-row', key: i },
+              h('input', { className: 'mt-input', value: row.time_range || '', placeholder: t.agendaTime, onChange: e => setRow(i, 'time_range', e.target.value) }),
+              h('input', { className: 'mt-input', value: row.topic || '', placeholder: t.agendaTopic, onChange: e => setRow(i, 'topic', e.target.value) }),
+              h('input', { className: 'mt-input', value: row.speaker || '', placeholder: t.agendaSpeaker, onChange: e => setRow(i, 'speaker', e.target.value) }),
+              h('input', { className: 'mt-input', value: row.objective || '', placeholder: '交付目标', onChange: e => setRow(i, 'objective', e.target.value) }),
+              h('button', { className: 'mt-btn small danger', onClick: () => setAgenda(rows => rows.filter((_, j) => j !== i)) }, '×'),
+            )),
+            h('button', { className: 'mt-btn small', onClick: () => setAgenda(rows => [...rows, { time_range: '', topic: '', speaker: '', objective: '' }]) }, '＋ ' + t.addAgenda),
+            h('h3', { className: 'mt-h3' }, t.materialTitle),
+            h('div', { className: 'mt-drop', onClick: () => fileRef.current?.click() }, t.materialHint),
+            h('input', { ref: fileRef, type: 'file', multiple: true, style: { display: 'none' }, onChange: pickFiles }),
+            materials.map((mat, i) => h('div', { className: 'mt-file', key: mat.name + '-' + i }, h('span', { className: 'name' }, mat.name), h('span', { className: 'mt-muted' }, fmtBytes(mat.size)), h('span', { className: 'mt-pill gray' }, mat.text ? t.materialTextReady : t.materialQueued), h('button', { className: 'mt-btn small danger', onClick: () => setMaterials(list => list.filter((_, j) => j !== i)) }, '×'))),
           ),
         ),
-        h('div', { className: 'mt-card mt-stack' },
-          h('h3', { className: 'mt-h3' }, '📎 ', t.materialTitle),
-          h('div', { className: 'mt-drop', onClick: () => fileRef.current && fileRef.current.click() }, t.materialHint),
-          h('input', { ref: fileRef, type: 'file', multiple: true, style: { display: 'none' }, onChange: pickFiles }),
-          materials.length
-            ? materials.map((mat, i) =>
-                h('div', { className: 'mt-file', key: `${mat.name}-${i}` },
-                  h('span', { className: 'name' }, '📄 ', mat.name),
-                  h('span', { className: 'mt-muted' }, fmtBytes(mat.size)),
-                  mat.text ? h('span', { className: 'mt-pill green' }, t.materialTextReady) : h('span', { className: 'mt-pill gray' }, t.materialQueued),
-                  h('button', { className: 'mt-btn ghost small danger', onClick: () => setMaterials((list) => list.filter((_, j) => j !== i)) }, '✕'),
-                ),
-              )
-            : null,
-          h('div', { className: 'mt-row', style: { justifyContent: 'flex-end' } },
-            h('button', { className: 'mt-btn primary', disabled: busy, onClick: submit }, busy ? h('span', { className: 'mt-spin' }) : null, t.submitCreate),
-          ),
-        ),
+        h('div', { className: 'mt-row', style: { justifyContent: 'flex-end' } }, h('button', { className: 'mt-btn primary', disabled: busy || !form.title.trim() || !Number.isFinite(Date.parse(form.start)) || !Number.isFinite(Date.parse(form.end)) || Date.parse(form.end) <= Date.parse(form.start), onClick: submit }, busy ? '正在创建…' : t.submitCreate)),
       )
     }
     const lang0 = (t) => (t.fTitle === '会议主题' ? '例如：Q4 算力扩容专项评审会' : 'e.g. Q4 compute expansion review')
@@ -900,18 +1276,259 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
     /* 视图三：会议纪要（实时录音 / 上传录音 / 粘贴文本 三来源）              */
     /* ---------------------------------------------------------------- */
 
-    function MinutesView({ t, lang, meetings, showToast, seed, refreshMeetings }) {
-      const [targetId, setTargetId] = useState(seed && seed.meetingId ? seed.meetingId : '')
-      const [minutes, setMinutes] = useState(null)
-      const [transcript, setTranscript] = useState('')
-      const [template, setTemplate] = useState('weekly')
+// Insert inside the existing classic client factory; uses its React/h/request/json bindings.
+// Classic factory helper: public save receipt is not a replacement for nonce/edit_epoch or server verification.
+async function classifyWordSave(result, expected) {
+  const receipt=result?.saveReceipt, minutes=result?.minutes
+  const uncertain=message=>({state:'save_uncertain',wordSaved:false,receipt:receipt || null,minutes:null,message})
+  // Archived documents are already authoritative read-only artifacts, not a new force-save transaction.
+  if(expected.readonly && result?.state==='saved' && minutes?.is_archived && receipt?.state!=='save_uncertain' && receipt?.state!=='saved_pending_recovery'){
+    const doc=minutes.word_document
+    if(minutes.minutes_id===expected.minutesId && (minutes.meeting_id || '')===(expected.meetingId || '') && Number.isSafeInteger(minutes.version) && minutes.version>=expected.minimumVersion && doc && /^[a-f0-9-]{36}$/.test(doc.artifact_id || '') && /^[a-f0-9]{64}$/.test(doc.docx_sha256 || '') && doc.docx_url==='/api/meeting-assistant/word-documents/'+doc.artifact_id+'/download')return {state:'saved',wordSaved:true,receipt:null,minutes,message:'已核验当前归档Word，无需再次强制保存。'}
+    return uncertain('归档Word版本或artifact/hash未确认；未下载旧稿。')
+  }
+  if(result?.state==='failed' || receipt?.state==='failed')return {state:'failed',wordSaved:false,receipt:receipt || null,minutes:null,message:result?.error || 'Word保存未完成；原稿和当前编辑保留。'}
+  if(result?.state==='save_uncertain' || receipt?.state==='save_uncertain' || receipt?.wordSaved===false)return uncertain('Word保存提交结果尚待核对；未下载旧稿，请核对保存收据。')
+  if(!['saved','saved_pending_recovery'].includes(result?.state) || !receipt || receipt.schemaVersion!==1 || !['saved','saved_pending_recovery'].includes(receipt.state) || receipt.wordSaved!==true)return uncertain('尚未取得可核验的Word保存收据；未把旧稿作为最新稿导出。')
+  const doc=minutes?.word_document
+  if(!minutes || minutes.minutes_id!==expected.minutesId || (minutes.meeting_id || '')!==(expected.meetingId || '') || receipt.minutesId!==minutes.minutes_id || (receipt.meetingId || '')!==(minutes.meeting_id || '') || !Number.isSafeInteger(minutes.version) || minutes.version<expected.minimumVersion || receipt.version!==minutes.version)return uncertain('保存收据与会议、纪要或最新版本不一致；停止下载与替换预览。')
+  if(!/^save_[a-f0-9]{64}$/.test(receipt.receiptId || '') || !doc || !/^[a-f0-9-]{36}$/.test(doc.artifact_id || '') || receipt.artifactId!==doc.artifact_id || !/^[a-f0-9]{64}$/.test(receipt.docxSha256 || '') || receipt.docxSha256!==doc.docx_sha256 || !/^[a-f0-9]{64}$/.test(receipt.contentSha256 || '') || doc.docx_url!=='/api/meeting-assistant/word-documents/'+doc.artifact_id+'/download')return uncertain('最新Word artifact/hash/下载地址与保存收据未对齐；不导出旧文件。')
+  if(expected.editEpoch!==undefined && result.edit_epoch!==expected.editEpoch)return uncertain('保存回执edit_epoch不一致；当前编辑继续保留。')
+  if(typeof minutes.content!=='string' || minutes.content.length>2000000)return uncertain('完整正文未能按既定上限核验；不截断、不导出旧稿。')
+  try{const bytes=new TextEncoder().encode(minutes.content),digest=await crypto.subtle.digest('SHA-256',bytes);const hash=Array.from(new Uint8Array(digest),x=>x.toString(16).padStart(2,'0')).join('');if(hash!==receipt.contentSha256)return uncertain('正文SHA256与保存收据不一致；停止替换与导出。')}catch{return uncertain('浏览器未能验证完整正文SHA256；Word提交待核对，未下载旧稿。')}
+  const receiptPending=receipt.receiptUpdatePending===true || result.receiptUpdatePending===true,relationshipPending=result.relationshipPending===true || receipt.relationshipRecovery!=='complete',pending=receipt.state==='saved_pending_recovery' || receiptPending || relationshipPending
+  return {state:pending?'saved_pending_recovery':'saved',wordSaved:true,receipt,minutes:{...minutes,saveReceipt:receipt,relationshipPending,receiptUpdatePending:receiptPending},message:receiptPending?'Word文字与排版已保存，保存收据待核对；不会再次强制保存或覆盖排版。':pending?'Word文字与排版已保存；资产关系待恢复。可导出此已核验最新Word，恢复关系不会重新生成或套用模板。':'最新Word与资产关系已保存。'}
+}
+function wordSaveError(classification){const error=new Error(classification.message);error.saveState=classification.state;error.wordSaved=classification.wordSaved;error.code=classification.state==='save_uncertain'?'WORD_SAVE_UNCERTAIN':'WORD_SAVE_FAILED';return error}
+function downloadConfirmedWord(minutes){const doc=minutes.word_document;if(!/^[a-f0-9-]{36}$/.test(doc.artifact_id) || doc.docx_url!=='/api/meeting-assistant/word-documents/'+doc.artifact_id+'/download')throw new Error('Word下载地址未通过校验。');const link=document.createElement('a');link.href=doc.docx_url;link.download=(minutes.title || '会议纪要')+'.docx';link.click()}
+
+// Insert inside existing classic factory; nonce, edit_epoch, SDK sync and save fence remain authoritative.
+function WordEditorPane({ minutes, onSaved, onState, apiRef }) {
+  const containerRef = useRef(null), editorRef = useRef(null), sessionRef = useRef(null)
+  const epochRef = useRef(0), aliveRef = useRef(false), saveLock = useRef(false), abortRef = useRef(null), fenceRef = useRef(null), syncedRef = useRef(true), syncWaiters = useRef(new Set())
+  const [phase, setPhase] = useState('loading'), [error, setError] = useState(''), [busy, setBusy] = useState(false), [dirtyWord, setDirtyWord] = useState(false), [retry, setRetry] = useState(0)
+   const saveAttemptRef=useRef(null)
+   const savedResultRef=useRef(null),[receiptState,setReceiptState]=useState(minutes.saveReceipt || null),[saveNotice,setSaveNotice]=useState('')
+  const latest = useRef({ onSaved, onState, minutes }); latest.current = { onSaved, onState, minutes }
+  useEffect(() => { latest.current.onState?.({ ready: phase === 'ready', dirty: dirtyWord, busy, error,saveReceipt:receiptState }) }, [phase, dirtyWord, busy, error,receiptState])
+  useEffect(() => { if (busy) fenceRef.current?.focus() }, [busy])
+  async function acceptReceipt(result,sid,epoch,editEpoch,minimumVersion,replacePreview){
+    const target=latest.current.minutes
+    const classification=await classifyWordSave(result,{minutesId:target.minutes_id,meetingId:target.meeting_id,minimumVersion:minimumVersion ?? target.version,editEpoch,readonly:target.is_archived===true})
+    if(!aliveRef.current || sessionRef.current!==sid || latest.current.minutes.minutes_id!==target.minutes_id)return classification
+    savedResultRef.current={result,classification,sid,epoch}
+    setReceiptState({...classification.receipt,state:classification.state,wordSaved:classification.wordSaved});setSaveNotice(classification.message)
+    if(replacePreview && classification.wordSaved && epochRef.current===epoch){latest.current.onSaved?.(classification.minutes);setDirtyWord(false)}
+    return classification
+  }
+  useEffect(() => {
+    let active = true; aliveRef.current = true
+    const ac = new AbortController(); abortRef.current = ac
+    const targetId = 'meet-word-' + Date.now().toString(36) + Math.random().toString(36).slice(2)
+    const slot = document.createElement('div'); slot.id = targetId; slot.style.width = '100%'; slot.style.height = '100%'
+    containerRef.current.replaceChildren(slot); epochRef.current = 0; sessionRef.current = null; syncedRef.current = true;savedResultRef.current=null
+    setPhase('loading'); setError(''); setDirtyWord(false);setReceiptState(minutes.saveReceipt || null);setSaveNotice('')
+    async function open() {
+      const data = await request('/word-editor/sessions', { ...json({ minutes_id: minutes.minutes_id, compact:true }), signal: ac.signal })
+      if (!active) return
+      if (!data.session_id || !/^\/meeting-word-editor\/web-apps\/apps\/api\/documents\/api\.js$/.test(data.sdk_url || '')) throw new Error('本地 Word 编辑入口无效。')
+      sessionRef.current = data.session_id
+      // Reopened service can report its durable save receipt. No force-save or model call on recovery.
+      const status=data.export?data:await request('/word-editor/sessions/'+data.session_id,{signal:ac.signal})
+      if(!active)return
+      if(status.export?.saveReceipt){
+        const resumed={...status.export,minutes:status.export.minutes || data.minutes}
+        if(resumed.saveReceipt.wordSaved && (!data.minutes || resumed.minutes?.version!==data.minutes.version || resumed.minutes?.word_document?.artifact_id!==data.minutes.word_document?.artifact_id))throw new Error('Word文档源已更新；请重开编辑器读取真实最新版本，未套用旧文档。')
+        await acceptReceipt(resumed,data.session_id,0,undefined,minutes.version,true)
+        if(!active)return
+      }
+      if (!window.DocsAPI) {
+        if (!window.__meetaiDocsSdk) window.__meetaiDocsSdk = new Promise((resolve, reject) => {
+          const script = document.createElement('script'); script.src = data.sdk_url; script.async = true
+          script.onload = () => window.DocsAPI ? resolve() : reject(new Error('Word SDK 未就绪'))
+          script.onerror = () => { script.remove(); window.__meetaiDocsSdk = null; reject(new Error('本地 Word 服务脚本加载失败')) }
+          document.head.appendChild(script)
+        })
+        await window.__meetaiDocsSdk
+      }
+      if (!active) return
+      editorRef.current = new window.DocsAPI.DocEditor(targetId, { ...data.config, events: {
+        onDocumentReady: () => { if (active) setPhase('ready') },
+        onDocumentStateChange: event => {
+          if (!active) return
+          if (event.data === true) { syncedRef.current = false; epochRef.current++; setDirtyWord(true) }
+          else if (event.data === false) { syncedRef.current = true; for (const finish of [...syncWaiters.current]) finish() }
+        },
+        onError: event => { if (active) { setError('Word 编辑服务错误：' + String(event?.data?.errorDescription || event?.data?.errorCode || '请重试')); setPhase('error') } }
+      } })
+    }
+    open().catch(reason => { if (active && reason.name !== 'AbortError') { setError('草稿已保存，编辑器加载失败：' + reason.message); setPhase('error') } })
+    return () => { active = false; aliveRef.current = false; ac.abort(); editorRef.current?.destroyEditor(); editorRef.current = null; sessionRef.current = null }
+  }, [minutes.minutes_id, retry])
+  async function verifyPendingWordSave(){
+    const binding=savedResultRef.current,sid=sessionRef.current
+    if(saveLock.current||!sid||!binding||binding.sid!==sid)return
+    saveLock.current=true;setBusy(true);setError('')
+    try{const state=await request('/word-editor/sessions/'+sid,{signal:abortRef.current.signal}),result=state.export
+      if(!aliveRef.current||sessionRef.current!==sid||savedResultRef.current!==binding)return
+      if(!binding.result.request_id||!result||result.request_id!==binding.result.request_id||result.edit_epoch!==binding.result.edit_epoch)throw new Error('保存请求标识未确认；请核对最新已存稿，本次不重提或下载。')
+      if(result.state==='pending'){setSaveNotice('服务端仍在确认保存；没有重提保存或下载旧稿。');return}
+      const attempt=saveAttemptRef.current,classification=await acceptReceipt(result,sid,binding.epoch,binding.result.edit_epoch,attempt?.minimumVersion||latest.current.minutes.version,epochRef.current===binding.epoch)
+      if(!classification.wordSaved)throw wordSaveError(classification)
+    }catch(error){if(aliveRef.current)setError(error.message)}finally{saveLock.current=false;if(aliveRef.current)setBusy(false)}
+  }
+  async function recoverWordRelations(){
+    const binding=savedResultRef.current,sid=sessionRef.current
+    if(saveLock.current || !sid || !binding?.classification.receipt?.receiptId || binding.sid!==sid)return
+    saveLock.current=true;setBusy(true);setError('')
+    try{
+      const result=await request('/word-editor/sessions/'+sid+'/recovery',{...json({receipt_id:binding.classification.receipt.receiptId}),signal:abortRef.current.signal})
+      if(!aliveRef.current || sessionRef.current!==sid || savedResultRef.current!==binding)return
+      if(result.request_id!==binding.result.request_id || result.edit_epoch!==binding.result.edit_epoch)throw Object.assign(new Error('关系恢复回执与原保存nonce/edit_epoch不一致；当前稿和编辑保留。'),{saveState:'save_uncertain'})
+      const unchanged=epochRef.current===binding.epoch
+      const classification=await acceptReceipt(result,sid,binding.epoch,undefined,latest.current.minutes.version,unchanged)
+      if(classification.state==='failed' || classification.state==='save_uncertain')throw wordSaveError(classification)
+    }catch(reason){if(aliveRef.current && reason.name!=='AbortError'){setError('保存收据核对／关系恢复未完成：'+reason.message);setSaveNotice(binding.classification.wordSaved?'Word此前已确认保存；保存收据核对／关系恢复尚未完成，不会重跑生成或覆盖排版。':'Word提交结果仍待核对；没有下载旧稿，也未再次强制保存。')}}
+    finally{saveLock.current=false;if(aliveRef.current)setBusy(false)}
+  }
+  async function saveWord(download = false) {
+    if (saveLock.current || phase !== 'ready' || !sessionRef.current) throw new Error('Word 编辑器尚未就绪或正在保存。')
+    const prior=savedResultRef.current
+    if(prior?.classification.state==='save_uncertain')throw wordSaveError(prior.classification)
+    // A relationship-only recovery is not another Word save; retain the already confirmed artifact.
+    if(prior?.classification.wordSaved && prior.sid===sessionRef.current && prior.epoch===epochRef.current && !dirtyWord){if(download)downloadConfirmedWord(prior.classification.minutes);return prior.classification.minutes}
+    saveLock.current = true; setBusy(true); setError('')
+    const sid = sessionRef.current, epoch = epochRef.current, ac = abortRef.current,hadLocalChanges=dirtyWord || (prior?prior.epoch!==epoch:epoch>0),minimumVersion=latest.current.minutes.version+(hadLocalChanges?1:0)
+    try {
+      // Fence immediately, then wait for the SDK's native server acknowledgment.
+      // A successful force-save command alone cannot flush pending local edits.
+      if (containerRef.current) { containerRef.current.inert = true; containerRef.current.style.pointerEvents = 'none' }
+      document.activeElement?.blur?.(); fenceRef.current?.focus()
+      await new Promise(resolve => window.setTimeout(resolve, 0))
+      if (!syncedRef.current) await new Promise((resolve, reject) => {
+        const signal = ac.signal
+        let timer
+        const cleanup = () => { window.clearTimeout(timer); syncWaiters.current.delete(finish); signal.removeEventListener('abort', abort) }
+        const finish = () => { cleanup(); resolve() }
+        const abort = () => { cleanup(); reject(new DOMException('Aborted', 'AbortError')) }
+        if (signal.aborted) return abort()
+        syncWaiters.current.add(finish); signal.addEventListener('abort', abort, { once: true })
+        timer = window.setTimeout(() => { cleanup(); reject(new Error('编辑器同步确认超时；本次未请求保存，也没有下载旧文件。')) }, 45000)
+        if (syncedRef.current) finish()
+      })
+      if (epochRef.current !== epoch || sessionRef.current !== sid) throw new Error('同步期间编辑状态已变化，请重新导出最新版本。')
+      saveAttemptRef.current={sid,epoch,minimumVersion,requestId:null}
+       let result = await request('/word-editor/sessions/' + sid + '/export', { ...json({ edit_epoch: epoch }), signal: ac.signal })
+      const nonce = result.request_id, deadline = Date.now() + 120000
+       saveAttemptRef.current.requestId=nonce
+      if(typeof nonce!=='string' || !nonce)throw Object.assign(new Error('保存请求缺少nonce；停止下载以避免旧稿。'),{saveState:'save_uncertain'})
+      while (result.state === 'pending') {
+        if (Date.now() >= deadline) throw Object.assign(new Error('Word保存确认超时；提交结果待核对，没有下载旧文件。'),{saveState:'save_uncertain'})
+        await new Promise((resolve, reject) => { const timer = window.setTimeout(resolve, 1000); const abort = () => { window.clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')) }; ac.signal.addEventListener('abort', abort, { once: true }); window.setTimeout(() => ac.signal.removeEventListener('abort', abort), 1100) })
+        const state = await request('/word-editor/sessions/' + sid, { signal: ac.signal })
+        result = state.export
+        if (!result || result.request_id !== nonce) throw Object.assign(new Error('保存请求已变化；为避免下载旧版本，本次导出已停止。'),{saveState:'save_uncertain'})
+      }
+      if (sessionRef.current !== sid || epochRef.current !== epoch) throw new Error('保存过程中编辑状态已变化，请重新导出最新版本。')
+      if(result.recoveryBinding && hadLocalChanges)throw Object.assign(new Error('该回执仅确认此前Word；当前SDK新编辑尚未保存，请恢复关系后重新保存新编辑。'),{saveState:'save_uncertain'})
+      const classification=await acceptReceipt(result,sid,epoch,epoch,minimumVersion,true)
+      if(!aliveRef.current || sessionRef.current!==sid || epochRef.current!==epoch || latest.current.minutes.minutes_id!==result.minutes?.minutes_id)throw Object.assign(new Error('核验期间编辑或会议已变化；保留当前编辑，未下载旧稿。'),{saveState:'save_uncertain'})
+      if(!classification.wordSaved)throw wordSaveError(classification)
+      if (download)downloadConfirmedWord(classification.minutes)
+      return classification.minutes
+    } catch (reason) {
+       const attempt=saveAttemptRef.current
+       if(aliveRef.current&&attempt?.sid===sid&&!savedResultRef.current?.classification.wordSaved&&savedResultRef.current?.classification.state!=='failed'){const classification={state:'save_uncertain',wordSaved:false,receipt:savedResultRef.current?.classification.receipt||null,minutes:null,message:'保存提交结果待核对；不会重新提交或下载旧稿。'};savedResultRef.current={result:{request_id:attempt.requestId,edit_epoch:epoch},classification,sid,epoch};setReceiptState({state:'save_uncertain',wordSaved:false});setSaveNotice(classification.message)}
+       if (aliveRef.current && reason.name !== 'AbortError') setError(reason.message); throw reason
+     }
+    finally {
+      saveLock.current = false
+      if (containerRef.current) { containerRef.current.inert = false; containerRef.current.style.pointerEvents = '' }
+      if (aliveRef.current) setBusy(false)
+    }
+  }
+  if (apiRef) apiRef.current = { save: saveWord,recover:recoverWordRelations,saveReceipt:receiptState, dirty: dirtyWord, busy, ready: phase === 'ready' }
+  return h('div', { className: 'mt-word-editor-wrap', style: { position: 'relative', minWidth: 0 } },
+    h('div', { className: 'mt-muted', style: { marginBottom: 8 } }, minutes.is_archived ? '已归档版本只读；导出原排版。' : dirtyWord ? '有文字或排版修改；保存／导出会等待本地服务确认。' : 'Word 式本地编辑；导出前自动保存当前文字和排版。'),
+    saveNotice?h('div',{role:'status',className:'mt-notice'},saveNotice,receiptState?.state!=='saved' && savedResultRef.current?.classification.receipt?.receiptId?h('button',{className:'mt-btn small',disabled:busy,onClick:recoverWordRelations},['save_uncertain','failed'].includes(receiptState?.state) || receiptState?.receiptUpdatePending?'核对保存收据（不重新保存）':'仅恢复资产关系'):null):null,
+    receiptState?.state==='save_uncertain'?h('button',{className:'mt-btn small',disabled:busy,onClick:verifyPendingWordSave},'仅核对保存状态（不重提）'):null,
+     error ? h('div', { role: 'alert', className: 'mt-notice' }, error, ' ', h('button', { className: 'mt-btn small', disabled: busy, onClick: () => { if (!dirtyWord || window.confirm('重载前请确认修改已保存；未保存修改可能丢失。继续？')) setRetry(x => x + 1) } }, '重试编辑器')) : null,
+    h('div', { ref: containerRef, style: { height: 'min(900px, calc(100vh - 220px))', minHeight: 480, width: '100%', border: '1px solid var(--border)', borderRadius: 8 } }),
+    phase === 'loading' ? h('div', { role: 'status', className: 'mt-muted' }, '正在载入本地 Word 编辑器…') : null,
+    busy ? h('div', { ref: fenceRef, tabIndex: 0, role: 'status', 'aria-live': 'polite', style: { position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,.85)', zIndex: 20, outline: 'none' } }, '正在核对当前Word保存回执；不会下载未经确认的旧文件…') : null,
+    h('div', { className: 'mt-muted', style: { marginTop: 6, fontSize: 12 } }, '本地 ONLYOFFICE Docs · 保留原厂版权与许可说明；字体缺失时可能替代显示，最终分页以 Word 打开结果为准。')
+  )
+}
+
+
+    function MinutesView({ t, lang, meetings, showToast, seed, refreshMeetings, registerGuard, visible }) {
+      const restored = useRef(retainedMinutesSnapshot && (!seed?.meetingId || seed.meetingId === retainedMinutesSnapshot.targetId) ? retainedMinutesSnapshot : null).current
+      const [targetId, setTargetId] = useState(restored?.targetId || (seed && seed.meetingId ? seed.meetingId : ''))
+      const [minutes, setMinutes] = useState(restored?.minutes || null)
+      const [transcript, setTranscript] = useState(restored?.transcript || '')
+      const [template, setTemplate] = useState(restored?.template || 'weekly')
+      const [wordTemplate, setWordTemplate] = useState(restored?.wordTemplate || null)
+      const [wordBusy, setWordBusy] = useState(false)
+      const wordInput = useRef(null), wordUploadLock = useRef(false)
+      const nativeWordApi = useRef(null)
+      const [nativeWordState, setNativeWordState] = useState({ ready:false, dirty:false, busy:false, error:'' })
+      const [wordPreview, setWordPreview] = useState({ state: 'idle', error: '' })
+      const [wordRetry, setWordRetry] = useState(0)
       const [busy, setBusy] = useState(false)
-      const [draft, setDraft] = useState(null) // null = 跟随服务端；否则为本地编辑缓冲
+      const [generationProgress035,setGenerationProgress035] = useState(null)
+      const [groundingView035,setGroundingView035] = useState(null)
+      async function inspectGrounding035(taskId) { const owner=taskId?'task:'+taskId:'minutes:'+minutes?.minutes_id;const route=taskId?'/generation-tasks/'+encodeURIComponent(taskId)+'/grounding':'/minutes/'+encodeURIComponent(minutes.minutes_id)+'/grounding';setGroundingView035({owner,loading:true});try{const data=await request(route);setGroundingView035(v=>v?.owner===owner?{owner,data}:v)}catch(error){setGroundingView035(v=>v?.owner===owner?{owner,error:error.message}:v)}}
+      const [generationActive035,setGenerationActive035] = useState(false)
+      const generationAbort035=useRef(null),generationInput035=useRef(null)
+      useEffect(()=>()=>generationAbort035.current?.abort(),[])
+      async function runGeneration035(body,options={}) {
+        const ac=new AbortController(),abort=()=>ac.abort()
+        generationAbort035.current=ac;setGenerationActive035(true)
+        if(body)generationInput035.current=body
+        options.signal?.addEventListener("abort",abort,{once:true});if(options.signal?.aborted)ac.abort()
+        setGenerationProgress035({state:"queued",label:"正在创建可恢复的纪要任务"})
+        try {return await generateWithProgress035(body,{signal:ac.signal,resumeTaskId:options.resumeTaskId,onProgress:task=>{setGenerationProgress035(task);options.onProgress?.(task.label)}})}
+        catch(error){setGenerationProgress035({task_id:error.task_id,state:error.name==="AbortError"?"cancelled":error.code?.includes("GROUNDED")?"unresolved":"interrupted",label:error.name==="AbortError"?"纪要处理已取消；完整录音、转写和缓存保留。":error.message});throw error}
+        finally{options.signal?.removeEventListener("abort",abort);generationAbort035.current=null;setGenerationActive035(false)}
+      }
+      async function resumeGeneration035() {
+        if(contextBusy||!generationProgress035?.task_id)return
+        if(!window.confirm("恢复使用原任务的会议、模型、原文和模板，不采用现在的新选项。自动核验仍需人工复核。继续？"))return
+        if(dirty&&!window.confirm("恢复成功后将替换未保存的预览修改。继续？"))return
+        setBusy(true)
+        try{const data=await runGeneration035(null,{resumeTaskId:generationProgress035.task_id});setMinutes(data.minutes);setTargetId(data.minutes.meeting_id||targetId);setDraft(null);setEditing(false);setWordTemplate(current=>current?.templateId===generationInput035.current?.word_template_id?null:current);refreshMeetings();showToast(t.generated,"success")}
+        catch(error){showToast(error.message,"error")}finally{setBusy(false)}
+      }
+      const operationRef = useRef(null) // synchronous lock; React state updates alone do not prevent repeated callbacks
+      const skipInitialLoad = useRef(Boolean(restored?.minutes || restored?.draft !== undefined && restored?.draft !== null))
+      const [draft, setDraft] = useState(restored?.draft ?? null) // null = 跟随服务端；否则为本地编辑缓冲
       const txtRef = useRef(null)
       const impRef = useRef(null)
+      const [editing, setEditing] = useState(restored?.editing || false)
+      const [minuteLoad, setMinuteLoad] = useState('idle')
+      const [templateCatalog, setTemplateCatalog] = useState({ state: 'loading', rows: [] })
+      const [modelCatalog, setModelCatalog] = useState({ state: 'loading', groups: [] })
+      const [taskModel, setTaskModel] = useState(restored?.taskModel || null)
+      const refreshCatalogs = useCallback(async () => {
+        setModelCatalog(current => ({ ...current, state: 'loading' }))
+        try { const data = await request('/models'); setModelCatalog({ state: 'ready', groups: data.groups || [] }) }
+        catch { setModelCatalog({ state: 'error', groups: [] }) }
+        try { const data = await request('/templates'); setTemplateCatalog({ state: 'ready', rows: data.templates || [] }) }
+        catch { setTemplateCatalog({ state: 'error', rows: [] }) }
+      }, [])
+      useEffect(() => { refreshCatalogs() }, [refreshCatalogs])
+      const [floatingCaption, setFloatingCaption] = useState(false)
+      const [captionPosition, setCaptionPosition] = useState({ x: 24, y: 90 })
+      const captionDragRef = useRef(null)
+      const liveAudioRef = useRef(null)
+      const [playPosition, setPlayPosition] = useState(0)
+      const [playDuration, setPlayDuration] = useState(0)
+      const minuteLoadSeq = useRef(0)
+      const recoverySnapshot = useRef(null)
+      const uploadRecRef = useRef(null)
 
       // —— 转写来源三模式：live 实时录音 / upload 上传录音 / paste 粘贴文本 ——
-      const [srcMode, setSrcMode] = useState('live')
+      const [srcMode, setSrcMode] = useState(restored?.srcMode || 'live')
       // live 实时录音态
       const [recording, setRecording] = useState(false)
       const [elapsed, setElapsed] = useState(0) // 已录秒数
@@ -922,16 +1539,19 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
       const [liveStarting, setLiveStarting] = useState(false)
       const [liveStage, setLiveStage] = useState('')
       const [captionStatus, setCaptionStatus] = useState('')
+      const [captionSource, setCaptionSource] = useState('browser')
+      // Future local stream events update these round-scoped, untrusted preview-only records.
+      const [captionEntries, setCaptionEntries] = useState([])
+      const [speakerNames, setSpeakerNames] = useState({})
       const liveRoundRef = useRef(null)
       const liveMountedRef = useRef(true)
       // upload 上传录音态
-      const [uploadRec, setUploadRec] = useState(null)
+      const [uploadRec, setUploadRec] = useState(restored?.uploadRec || null)
       const [upProgress, setUpProgress] = useState(-1) // -1 = 未在上传中；0-100 上传进度
-      const [upTranscript, setUpTranscript] = useState('')
+      const [upTranscript, setUpTranscript] = useState(restored?.upTranscript || '')
       const [upBusy, setUpBusy] = useState(false)
        const [upStage, setUpStage] = useState('')
       const [upSaving, setUpSaving] = useState(false)
-      const [playingRec, setPlayingRec] = useState(false)
       const dropRef = useRef(null)
       const upTxtRef = useRef(null)
       const upAudioRef = useRef(null)
@@ -939,16 +1559,13 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
       const recRef = useRef(null) // MediaRecorder
       const streamRef = useRef(null) // MediaStream
       const chunksRef = useRef([]) // 音频分片
-      const srRef = useRef(null) // SpeechRecognition（实时录音）
-      const upSrRef = useRef(null) // SpeechRecognition（播放转写）
       const liveFinalRef = useRef('') // 已定稿文本累积（避免闭包旧值）
       const firstSeenRef = useRef(null) // 各转写段首次到达时刻（Map）
       const timerRef = useRef(null) // 计时器句柄
       const stoppedRef = useRef(true) // 是否已主动停止（onend 判断是否自动重启）
-      const playingRef = useRef(false) // 「播放并实时转写」进行中
       const upXhrRef = useRef(null) // 上传 XHR 句柄
 
-      // 能力探测（typeof 守卫：Node stub / 不支持的浏览器下为 null）
+      // 原有浏览器临时字幕仅作预览，可能由浏览器供应商处理音频；正式录音仍由 MediaRecorder 独立保存。
       const SR = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null
       const MR = typeof window !== 'undefined' ? window.MediaRecorder : null
       const liveSupported = Boolean(MR && typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.isSecureContext)
@@ -960,61 +1577,129 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
       const mmss = (s) => `${pad2(Math.floor(s / 60))}:${pad2(s % 60)}`
 
       const loadMinutes = useCallback(async (meetingId) => {
-        setMinutes(null)
-        setDraft(null)
+        const seq = ++minuteLoadSeq.current
+        setMinutes(null); setDraft(null); setEditing(false)
+        setMinuteLoad(meetingId ? 'loading' : 'idle')
         if (!meetingId) return
         try {
-          const data = await request(`/minutes/meeting/${encodeURIComponent(meetingId)}`)
-          setMinutes(data.minutes || null)
-        } catch {
-          setMinutes(null)
+          const data = await request('/minutes/meeting/' + encodeURIComponent(meetingId))
+          if (seq !== minuteLoadSeq.current) return
+          setMinutes(data.minutes || null); setMinuteLoad('ready')
+        } catch (error) {
+          if (seq !== minuteLoadSeq.current) return
+          setMinutes(null); setMinuteLoad(error.code === 'NOT_FOUND' || error.message === '纪要不存在' ? 'empty' : 'error')
         }
       }, [])
 
       useEffect(() => {
-        if (seed && seed.nonce) setTargetId(seed.meetingId || '')
+        if (seed && seed.nonce && (seed.meetingId || '') !== targetId) changeMeeting(seed.meetingId || '')
       }, [seed && seed.nonce])
       useEffect(() => {
+        if (skipInitialLoad.current) { skipInitialLoad.current = false; return }
         loadMinutes(targetId)
       }, [targetId, loadMinutes])
 
-      // 卸载清理：停计时 / 停识别 / 停录音 / 释放麦克风 / 中止上传
+      // Internal pages keep this owner mounted. Actual module unmount seals the final Blob first.
       useEffect(() => {
         liveMountedRef.current = true
+        const recovered = retainedLiveRound
+        if (recovered && !recovered.cancelled && (!seed?.meetingId || seed.meetingId === recovered.meetingId)) {
+          recovered.done.then(blob => {
+            if (!blob || !blob.size || !liveMountedRef.current || liveRoundRef.current) return
+            const round = { ...recovered, blob, chunks: [], stopped: true, processing: false, cancelled: false, controller: new AbortController() }
+            round.done = Promise.resolve(blob)
+            round.url = recovered.url || URL.createObjectURL(blob)
+            liveRoundRef.current = round
+            setTargetId(round.meetingId || ''); setTemplate(round.template); setAudioUrl(round.url)
+            setElapsed(round.snapshot?.elapsed || 0); setLiveText(round.transcript || round.snapshot?.liveText || '')
+            if (round.snapshot?.minutes && !round.meetingId) setMinutes(round.snapshot.minutes)
+            setCaptionStatus('已恢复本模块保留的完整录音；刷新页面或关闭浏览器仍会丢失未下载音频。')
+            setLiveStage('完整录音已封存，可回放、下载或显式生成。')
+          })
+        }
         return () => {
+          retainedMinutesSnapshot = recoverySnapshot.current
           liveMountedRef.current = false
+          operationRef.current = null
+          minuteLoadSeq.current++
           const round = liveRoundRef.current
-          if (round) {
-            round.cancelled = true
+          if (round && !round.cancelled) {
+            round.snapshot = recoverySnapshot.current
+            retainedLiveRound = round
+            stopLive() // leaves dataavailable active until recorder onstop seals every chunk
             round.controller.abort()
             clearTimeout(round.timer); clearTimeout(round.captionTimer)
-            if (round.url) URL.revokeObjectURL(round.url)
-            round.endCaption?.('unmounted')
+            round.done.then(blob => { round.processing = false; round.chunks = []; if (!blob || !blob.size) round.cancelled = true })
           }
-          stoppedRef.current = true
-          playingRef.current = false
-          try { if (timerRef.current) window.clearTimeout(timerRef.current) } catch { /* ignore */ }
-          try { if (srRef.current) { srRef.current.onresult = srRef.current.onerror = srRef.current.onend = null; srRef.current.abort() } } catch { /* ignore */ }
-          try { if (upSrRef.current) { upSrRef.current.onend = null; upSrRef.current.stop() } } catch { /* ignore */ }
-          try { if (recRef.current && recRef.current.state !== 'inactive') recRef.current.stop() } catch { /* ignore */ }
-          try { if (streamRef.current) streamRef.current.getTracks().forEach((tr) => tr.stop()) } catch { /* ignore */ }
-          try { if (upXhrRef.current) upXhrRef.current.abort() } catch { /* ignore */ }
+          try { streamRef.current?.getTracks().forEach(track => track.stop()) } catch { /* device cleanup */ }
+          upXhrRef.current?.abort()
         }
       }, [])
 
       const content = draft !== null ? draft : minutes ? minutes.content : ''
       const meeting = meetings.find((m) => m.id === targetId)
-      const statusValue = minutes && minutes.is_archived ? 'archived' : meeting ? meeting.minutes_status || 'none' : 'none'
+      const statusValue = minutes ? minutes.is_archived ? 'archived' : 'ready' : meeting ? meeting.minutes_status || 'none' : 'none'
+      const dirty = nativeWordState.dirty || (draft !== null && draft !== (minutes?.content || ''))
+      const contextBusy = nativeWordState.busy || recording || liveStarting || liveBusy || busy || wordBusy || upBusy || upSaving || upProgress >= 0
+      const templateReady = templateCatalog.state === 'ready' && templateCatalog.rows.some(row => row.id === template)
+      const previewReady = Boolean(minutes && (minutes.word_document || content.trim()))
+      const contextLocked = contextBusy || Boolean(audioUrl)
+      recoverySnapshot.current = { targetId, template, wordTemplate, minutes, draft, editing, transcript, srcMode, uploadRec, upTranscript, taskModel, elapsed, liveText }
+      uploadRecRef.current = uploadRec
+      useEffect(() => {
+        registerGuard?.({ recording: recording || liveStarting, busy: contextBusy, hasBlob: Boolean(audioUrl), dirty, targetId, seal: sealLive })
+      }, [registerGuard, recording, liveStarting, contextBusy, audioUrl, dirty, targetId])
+      useEffect(() => {
+        const beforeUnload = event => { if (recording || liveStarting || audioUrl || dirty || contextBusy) { event.preventDefault(); event.returnValue = '' } }
+        const onResize = () => setCaptionPosition(pos => clampCaptionPosition(pos.x, pos.y, window.innerWidth, window.innerHeight))
+        window.addEventListener('beforeunload', beforeUnload); window.addEventListener('resize', onResize)
+        return () => { window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('resize', onResize) }
+      }, [recording, liveStarting, audioUrl, dirty, contextBusy])
+      function beginCaptionDrag(event) {
+        if (event.target.tagName === 'BUTTON') return
+        captionDragRef.current = { id: event.pointerId, x: event.clientX - captionPosition.x, y: event.clientY - captionPosition.y }
+        event.currentTarget.setPointerCapture(event.pointerId)
+      }
+      function moveCaption(event) {
+        const drag = captionDragRef.current
+        if (drag && drag.id === event.pointerId) setCaptionPosition(clampCaptionPosition(event.clientX - drag.x, event.clientY - drag.y, window.innerWidth, window.innerHeight))
+      }
+      function discardLive() {
+        if ((audioUrl || recording) && !window.confirm('放弃本页录音？未下载的音频将丢失。')) return
+        cancelLive()
+      }
+      function changeMeeting(id) {
+        if (contextBusy || operationRef.current || upXhrRef.current) return showToast('录音、上传或处理期间绑定已锁定；任务完成后再切换。', 'warn')
+        if ((dirty || audioUrl) && !window.confirm('切换会议将放弃当前未保存修改及页面录音。请先保存或下载。继续？')) return
+        if (liveRoundRef.current) cancelLive()
+        uploadRecRef.current = null
+        setUploadRec(null); setUpTranscript(''); setTargetId(id)
+      }
+
+      function beginOperation() {
+        if (!liveMountedRef.current || operationRef.current || contextBusy || upXhrRef.current) return null
+        const token = {}
+        operationRef.current = token
+        minuteLoadSeq.current++ // a pending GET must not overwrite this operation's result or draft
+        return token
+      }
+      function operationActive(token) { return liveMountedRef.current && operationRef.current === token }
+      function endOperation(token) { if (operationRef.current === token) operationRef.current = null }
 
       /* —— 模式 C：粘贴文本（沿用原 generate：需绑定会议，保持旧行为） —— */
       async function generate() {
         if (!targetId) return showToast(t.pickMeeting, 'warn')
         if (!transcript.trim()) return showToast(t.transcriptLabel, 'warn')
+        if (!templateReady || contextBusy) return
+        if (dirty && !window.confirm('生成新纪要将替换预览中的未保存修改。继续？')) return
+        const body = minutesTaskBody({ transcript, template, meetingId: targetId, model: taskModel, wordTemplateId: wordTemplate?.templateId || '' })
+        minuteLoadSeq.current++; setMinuteLoad('ready')
         setBusy(true)
         try {
-          const data = await request('/generate-text', json({ meeting_id: targetId, transcript, template_type: template }))
+          const data = await runGeneration035(body)
+          setWordTemplate(null)
           setMinutes(data.minutes)
-          setDraft(null)
+          setDraft(null); setEditing(false)
           setTranscript('')
           showToast(t.generated, 'success')
           refreshMeetings()
@@ -1025,32 +1710,22 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
         }
       }
 
-      async function saveContent(source) {
-        if (!minutes) return
-        setBusy(true)
-        try {
-          const body = { content, action_items: minutes.action_items }
-          if (source) body.source = source
-          const data = await request(`/minutes/${encodeURIComponent(minutes.minutes_id)}`, put(body))
-          setMinutes(data.minutes)
-          setDraft(null)
-          showToast(source === 'import' ? t.imported : t.saved, 'success')
-          refreshMeetings()
-        } catch (e) {
-          showToast(`${t.requestFailed}: ${e.message}`, 'error')
-        } finally {
-          setBusy(false)
-        }
+      async function saveNativeWord(download) {
+        if (!nativeWordApi.current?.ready || contextBusy) return showToast('本地Word编辑器未就绪或正在处理，未下载旧版。','warn')
+        try { await nativeWordApi.current.save(download); showToast(download?'最新Word已保存并开始下载。':t.saved,'success') }
+        catch(error){ if(error.name!=='AbortError') showToast('Word保存／导出失败：'+error.message,'error') }
       }
+      async function saveContent() { return saveNativeWord(false) }
 
       async function archive() {
-        if (!minutes) return
+        if (!minutes || busy || minutes.is_archived) return
+        if (dirty || nativeWordState.busy || draft !== null) return showToast('请先保存文字与排版修改，再正式归档。', 'warn')
+        if (minutes.grounding && !window.confirm('自动核验仅说明全部分段已处理、已提取事实已覆盖，并不保证语义无遗漏。确认已对照原文人工复核当前版本，仍要正式归档？')) return
         setBusy(true)
         try {
-          if (draft !== null) await request(`/minutes/${encodeURIComponent(minutes.minutes_id)}`, put({ content, source: 'edit' }))
-          const data = await request(`/minutes/${encodeURIComponent(minutes.minutes_id)}/archive`, { method: 'POST' })
+          const data = await request(`/minutes/${encodeURIComponent(minutes.minutes_id)}/archive`, json({ grounding_reviewed:Boolean(minutes.grounding), expected_version:minutes.version }))
           setMinutes(data.minutes)
-          setDraft(null)
+          setDraft(null); setEditing(false)
           showToast(t.archivedToast(data.minutes.archive_fingerprint || ''), 'success')
           refreshMeetings()
         } catch (e) {
@@ -1060,44 +1735,110 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
         }
       }
 
-      function importFile(e, mode) {
-        const file = (e.target.files || [])[0]
-        e.target.value = ''
-        if (!file) return
+      function importFile(event, mode) {
+        const file = event.target.files?.[0]; event.target.value = ''
+        if (!file || contextBusy) return
+        if (file.size > 2 * 1024 * 1024) return showToast('文本导入最多2MiB。', 'error')
+        if (mode !== 'transcript' && (!minutes || !/\.(txt|md|markdown)$/i.test(file.name))) return showToast('请选择txt/md修订稿，并先选定真实纪要。', 'warn')
+        if (dirty && !window.confirm('导入将替换未保存修改。继续？')) return
+        if(mode !== 'transcript' && !window.confirm('导入纯文本修订稿将明确放弃当前Word人工排版，并生成新的文档版本。继续？')) return
+        const token = beginOperation()
+        if (!token) return
+        const currentMinutes = minutes
         const reader = new FileReader()
-        reader.onload = async () => {
-          const text = String(reader.result || '')
-          if (mode === 'transcript') setTranscript(text)
-          else if (minutes) {
-            setDraft(text)
-            try {
-              const data = await request(`/minutes/${encodeURIComponent(minutes.minutes_id)}`, put({ content: text, source: 'import', action_items: minutes.action_items }))
-              setMinutes(data.minutes)
-              setDraft(null)
-              showToast(t.imported, 'success')
-              refreshMeetings()
-            } catch (err) {
-              showToast(`${t.requestFailed}: ${err.message}`, 'error')
-            }
-          }
+        setBusy(true)
+        const failRead = () => {
+          if (operationActive(token)) { setBusy(false); showToast('读取文本失败，未修改服务器记录。', 'error') }
+          endOperation(token)
         }
-        reader.readAsText(file)
+        reader.onerror = failRead
+        reader.onload = async () => {
+          if (!operationActive(token)) return
+          const text = String(reader.result || '')
+          try {
+            if (text.length > 200000) throw new Error('文本超过200000字符，请缩减后导入。')
+            if (mode === 'transcript') setTranscript(text)
+            else {
+              setDraft(text); setEditing(true) // keep this imported draft if PUT fails
+              const data = await request('/minutes/' + encodeURIComponent(currentMinutes.minutes_id), put({ content: text, source: 'import', action_items: currentMinutes.action_items, discard_rich_format: true }))
+              if (!operationActive(token)) return
+              setMinutes(data.minutes); setDraft(null); setEditing(false)
+              showToast(t.imported, 'success'); refreshMeetings()
+            }
+          } catch (error) { if (operationActive(token)) showToast(t.requestFailed + ': ' + error.message, 'error') }
+          finally { if (operationActive(token)) setBusy(false); endOperation(token) }
+        }
+        try { reader.readAsText(file) } catch { failRead() }
       }
 
       async function toggleTodo(item) {
         if (!minutes) return
         const next = minutes.action_items.map((a) => (a.task_id === item.task_id ? { ...a, completed: !a.completed } : a))
-        setMinutes({ ...minutes, action_items: next })
+        if (contextBusy) return
+        setBusy(true)
         try {
           const data = await request(`/minutes/${encodeURIComponent(minutes.minutes_id)}`, put({ action_items: next }))
           setMinutes(data.minutes)
         } catch (e) {
           showToast(`${t.requestFailed}: ${e.message}`, 'error')
-        }
+        } finally { setBusy(false) }
       }
 
-      function copyAll() {
-        navigator.clipboard.writeText(content).then(() => showToast(t.copied, 'success')).catch(() => {})
+      async function copyAll() {
+        if (!content.trim()) return
+        try {
+          if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('当前浏览器不支持剪贴板接口')
+          await navigator.clipboard.writeText(content)
+          showToast(t.copied, 'success')
+        } catch { showToast('复制失败；请下载纪要或手动选取正文复制。', 'error') }
+      }
+      async function pickWordTemplate(event) {
+        const file = event.target.files?.[0]; event.target.value = ''
+        if (!file || contextBusy || wordUploadLock.current) return
+        if (!/\.docx$/i.test(file.name) || file.size > 10 * 1024 * 1024) return showToast('请上传10MB以内的DOCX模板。', 'warn')
+        wordUploadLock.current = true; setWordBusy(true)
+        try {
+          const uploaded = await request('/word-documents/templates?name=' + encodeURIComponent(file.name), { method: 'POST', headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }, body: file })
+          const previous = wordTemplate
+          setWordTemplate(uploaded)
+          if (previous?.templateId) await request('/word-documents/templates/' + encodeURIComponent(previous.templateId), { method: 'DELETE' }).catch(() => {})
+          showToast('Word模板仅用于下一次成功生成，不覆盖系统模板。', 'success')
+        } catch (error) { showToast('Word模板上传失败：' + error.message, 'error') }
+        finally { wordUploadLock.current = false; setWordBusy(false) }
+      }
+      async function removeWordTemplate() {
+        if (!wordTemplate || contextBusy || wordUploadLock.current) return
+        wordUploadLock.current = true; setWordBusy(true)
+        try {
+          await request('/word-documents/templates/' + encodeURIComponent(wordTemplate.templateId), { method: 'DELETE' })
+          setWordTemplate(null)
+        } catch (error) { showToast('移除模板失败：' + error.message, 'error') }
+        finally { wordUploadLock.current = false; setWordBusy(false) }
+      }
+      function safeWordDocument(value) {
+        return value && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value.artifact_id || '') &&
+          value.preview_url === '/api/meeting-assistant/word-documents/' + value.artifact_id + '/preview' &&
+          value.docx_url === '/api/meeting-assistant/word-documents/' + value.artifact_id + '/download'
+      }
+      const wordDocument = minutes?.word_document
+      const validWordDocument = safeWordDocument(wordDocument)
+      useEffect(() => {
+        if (!minutes?.minutes_id || !minutes.content) { setWordPreview({ state: 'idle', error: '' }); return }
+        if (validWordDocument) { setWordPreview({ state: 'ready', error: '' }); return }
+        let active = true
+        const ac = new AbortController(), id = minutes.minutes_id, version = minutes.version, savedContent = minutes.content
+        setWordPreview({ state: 'loading', error: '' })
+        request('/word-documents/from-minutes/' + encodeURIComponent(id), { ...json({}), signal: ac.signal }).then(data => {
+          if (!active) return
+          if (!safeWordDocument(data.document)) throw new Error('服务器未返回有效的Word成品，不能显示旧文本代替。')
+          setMinutes(current => current?.minutes_id === id && current.version === version && current.content === savedContent ? { ...current, word_document: data.document } : current)
+        }).catch(error => { if (active) setWordPreview({ state: 'error', error: error.message }) })
+        return () => { active = false; ac.abort() }
+      }, [minutes?.minutes_id, minutes?.version, minutes?.content, wordDocument?.artifact_id, wordRetry])
+      async function downloadMinutes() { return saveNativeWord(true) }
+      function cancelEdit() {
+        if (draft !== null && draft !== minutes?.content && !window.confirm('放弃未保存的纪要修改？')) return
+        setDraft(null); setEditing(false)
       }
 
       /* —— 模式 A：浏览器字幕仅预览；最终纪要必须依据完整音频的本地阿昆ASR —— */
@@ -1113,6 +1854,7 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
         stoppedRef.current = true
         clearTimeout(round.timer)
         clearTimeout(round.captionTimer)
+        round.localCaption?.stop()
         if (round.speech) {
           round.speech.onresult = round.speech.onerror = round.speech.onend = null
           try { round.speech.abort() } catch { /* ignore */ }
@@ -1126,8 +1868,11 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
 
       async function startLive() {
         const previous = liveRoundRef.current
+        if (previous?.blob && !window.confirm('重新录制将替换当前完整录音，请先下载。继续？')) return
+        if (!templateReady || busy || upBusy) return
+        retainedLiveRound = null
         if (!liveSupported || liveBusy || (previous && (!previous.stopped || previous.processing) && !previous.cancelled)) return
-        const round = { chunks: [], bytes: 0, cancelled: false, stopped: false, processing: false, controller: new AbortController(), meetingId: targetId, template, captionRetries: 0 }
+        const round = { chunks: [], bytes: 0, cancelled: false, stopped: false, processing: false, controller: new AbortController(), meetingId: targetId, template, captionSource, captionRetries: 0 }
         round.done = new Promise((resolve) => { round.resolve = resolve })
         liveRoundRef.current = round
         // 有效点击为起点；首次里程碑独立保留，最近事件有界且不含语音正文。
@@ -1152,9 +1897,11 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
         setLiveStarting(true)
         setLiveText('')
         setInterim('')
+        setCaptionEntries([])
+        setSpeakerNames({})
         setElapsed(0)
         setLiveStage('正在请求麦克风权限…')
-        setCaptionStatus('实时字幕仅作预览；停止后由本地阿昆全文识别。')
+        setCaptionStatus(round.captionSource === 'local' ? '已选择服务器本地模型；出错不会切换浏览器服务，完整录音独立保留。' : '浏览器临时字幕仅供预览，可能由浏览器供应商处理音频；完整录音仍在本机封存，停录后由阿昆正式转写。')
         if (audioUrl) { try { URL.revokeObjectURL(audioUrl) } catch { /* ignore */ } setAudioUrl('') }
         try {
           markCaption('permission-requested')
@@ -1198,48 +1945,63 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
           markCaption('recording-start')
           setRecording(true)
           setLiveStage('')
-          if (SR) {
+          // User approved legacy browser recognition for TEMPORARY captions only; the full recording remains independent.
+          if (round.captionSource === 'local') {
+            round.localCaption = startServerLocalCapture(stream, {
+              status: message => { if (liveActive(round) && !round.transcript) setCaptionStatus(message) },
+              error: message => { if (liveActive(round) && !round.transcript) { markCaption('local-error'); setCaptionStatus('本地字幕错误：' + message + '；不切换浏览器，完整录音继续。') } },
+              entries: entries => {
+                if (!liveActive(round) || round.transcript) return
+                setCaptionEntries(previous => {
+                  if (!liveActive(round) || round.transcript) return previous
+                  const ids = new Set(entries.map(entry => entry.utteranceId))
+                  return [...previous.filter(entry => !ids.has(entry.utteranceId)), ...entries.map(entry => ({ ...entry, speakerId: null, confidenceState: 'unknown', source: '服务器本地模型' }))].slice(-80)
+                })
+              },
+            })
+          } else if (SR) {
             try {
               const speech = new SR()
               round.speech = speech
-              srRef.current = speech
               speech.continuous = true
               speech.interimResults = true
               speech.lang = 'zh-CN'
+              let seen = new Map()
+              let finals = new Set()
+              let epoch = 0
               const requestCaption = () => {
                 captionTiming.attempt++
                 captionTiming.reconnects = captionTiming.attempt - 1
                 markCaption('start-requested')
-                setCaptionStatus('已请求浏览器字幕服务，等待启动；可能依赖浏览器语音服务，停止后由本地阿昆全文复核。')
+                setCaptionStatus('已请求浏览器临时字幕；音频可能由浏览器供应商处理，完整录音与正式转写仍走原链路。')
                 speech.start()
               }
-              speech.onstart = () => { markCaption('service-start'); if (liveActive(round) && !round.stopped) setCaptionStatus('字幕识别服务已启动，等待语音结果；完整音频正在录制。') }
+              speech.onstart = () => { markCaption('service-start'); if (liveActive(round) && !round.stopped) setCaptionStatus('浏览器字幕已启动；仅供临时预览，完整音频仍在录制。') }
               speech.onaudiostart = () => markCaption('audio-start')
               speech.onspeechstart = () => markCaption('speech-start')
               speech.onspeechend = () => markCaption('speech-end')
-              let seen = new Map()
-              let finals = new Set()
               speech.onresult = (event) => {
                 if (!liveActive(round) || round.stopped) return
                 markCaption('result')
                 let hasText = false
-                let pending = ''
                 for (let i = event.resultIndex; i < event.results.length; i++) {
                   const result = event.results[i]
-                  if (!seen.has(i)) seen.set(i, nowStamp())
                   const text = String((result[0] && result[0].transcript) || '').trim()
-                  if (text) hasText = true
-                  if (result.isFinal && text && !finals.has(i)) {
-                    finals.add(i)
-                    liveFinalRef.current += (liveFinalRef.current ? '\n' : '') + `[${seen.get(i)}] ${text}`
-                    setLiveText(liveFinalRef.current)
-                  } else if (!result.isFinal) pending += text
+                  if (!text) continue
+                  hasText = true
+                  if (!seen.has(i)) seen.set(i, Math.max(0, Math.round(clock() - started)))
+                  if (result.isFinal && finals.has(i)) continue
+                  if (result.isFinal) finals.add(i)
+                  const entry = { utteranceId: `browser-${epoch}-${i}`, startMs: seen.get(i),
+                    kind: result.isFinal ? 'final' : 'interim', text, speakerId: null, confidenceState: 'unknown' }
+                  setCaptionEntries(previous => {
+                    if (!liveActive(round) || round.stopped) return previous
+                    const next = previous.filter(row => row.utteranceId !== entry.utteranceId)
+                    next.push(entry)
+                    return next.slice(-80)
+                  })
                 }
-                if (hasText) {
-                  markCaption('text-result')
-                  setCaptionStatus('已收到浏览器实时字幕；仅作预览，停止后由本地阿昆全文复核。')
-                }
-                setInterim(pending)
+                if (hasText) { markCaption('text-result'); setCaptionStatus('已收到浏览器临时字幕；说话人未知，停录后仍由本地阿昆正式转写。') }
               }
               speech.onerror = (event) => {
                 if (!liveActive(round) || round.stopped) return
@@ -1247,25 +2009,27 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
                 markCaption('error', errorCode)
                 if (['not-allowed', 'service-not-allowed', 'audio-capture'].includes(errorCode)) round.captionDisabled = true
                 else if (errorCode !== 'no-speech' && errorCode !== 'aborted') round.captionRetries++
-                if (round.captionDisabled || round.captionRetries >= 3) round.captionDisabled = true
-                setCaptionStatus(`实时字幕暂不可用（${errorCode}），录音继续，停止后仍可本地全文转写。`)
+                if (round.captionRetries >= 3) round.captionDisabled = true
+                setCaptionStatus(`浏览器临时字幕暂不可用（${errorCode}）；完整录音继续，停录后仍可本地正式转写。`)
               }
               speech.onend = () => {
                 if (!liveActive(round) || round.stopped) return
                 const errorState = captionTiming.state
                 markCaption('service-end')
+                setCaptionEntries(previous => previous.filter(row => row.kind !== 'interim'))
                 if (round.captionDisabled) { captionTiming.state = errorState; return }
                 markCaption('reconnect-wait')
-                setCaptionStatus('字幕服务已断开，等待重新连接；录音继续，停止后仍可本地全文转写。')
+                setCaptionStatus('浏览器字幕暂断开，录音继续；等待重新连接。')
                 round.captionTimer = setTimeout(() => {
                   if (!liveActive(round) || round.stopped) return
+                  epoch++
                   seen = new Map(); finals = new Set()
-                  try { requestCaption() } catch { markCaption('error', 'start-failed'); round.captionDisabled = true; setCaptionStatus('实时字幕启动失败；不影响录音和停止后的本地全文转写。') }
+                  try { requestCaption() } catch { markCaption('error', 'start-failed'); round.captionDisabled = true; setCaptionStatus('浏览器字幕启动失败；不影响完整录音及正式转写。') }
                 }, 1000 * Math.min(4, round.captionRetries + 1))
               }
               requestCaption()
-            } catch { markCaption('error', 'start-failed'); setCaptionStatus('此浏览器实时字幕不可用；录音继续，停止后使用本地阿昆全文转写。') }
-          } else { markCaption('unsupported'); setCaptionStatus('此浏览器不支持实时字幕；录音继续，停止后使用本地阿昆全文转写。') }
+            } catch { markCaption('error', 'start-failed'); setCaptionStatus('浏览器临时字幕不可用；完整录音继续，停录后由本地阿昆正式转写。') }
+          } else { markCaption('unsupported'); setCaptionStatus('浏览器不支持临时字幕；完整录音继续，停录后由本地阿昆正式转写。') }
           const tick = () => {
             if (!liveActive(round) || round.stopped) return
             setElapsed((seconds) => seconds + 1)
@@ -1285,9 +2049,35 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
         } finally { if (liveMountedRef.current && liveRoundRef.current === round) setLiveStarting(false) }
       }
 
-      async function finishLive() {
+      // Stopping never uploads or generates. Await the final recorder chunk, retain Blob and release the mic.
+      async function sealLive() {
         const round = liveRoundRef.current
         if (!round || round.cancelled || round.processing || liveStarting) return
+        round.processing = true
+        setLiveBusy(true)
+        setLiveStage('正在停止录音并封存完整音频…')
+        try {
+          const blob = await stopLive()
+          if (!liveActive(round)) return
+          if (!blob || !blob.size) throw new Error('没有收到有效录音，请检查麦克风后重录。')
+          setLiveStage('完整录音已封存；点击生成纪要后才上传及正式识别。')
+          showToast('录音已停止并保留在当前页面，尚未上传或生成纪要。', 'info')
+          return blob
+        } catch (error) {
+          if (liveActive(round)) showToast(error.message || '停录失败，请检查设备。', 'error')
+        } finally {
+          round.processing = false
+          if (liveActive(round)) setLiveBusy(false)
+        }
+      }
+
+      async function finishLive() {
+        const round = liveRoundRef.current
+        if (!round || round.cancelled || round.processing || liveStarting || recording || !round.stopped || !round.blob || busy || upBusy) return
+        if (!templateReady) return showToast('请先加载真实纪要模板。', 'warn')
+        if (dirty && !window.confirm('生成新纪要将替换预览中的未保存修改。继续？')) return
+        const modelForRun = taskModel ? { ...taskModel } : null
+        minuteLoadSeq.current++; setMinuteLoad('ready')
         round.processing = true
         setLiveBusy(true)
         async function liveRequest(route, options, cleanup = false) {
@@ -1312,8 +2102,8 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
           } finally { clearTimeout(timer); round.controller.signal.removeEventListener('abort', cancel) }
         }
         try {
-          setLiveStage('正在停止录音并保存最后音频…')
-          const blob = await stopLive()
+          setLiveStage('正在准备已封存的完整录音…')
+          const blob = round.blob
           if (!liveActive(round)) return
           if (!blob || !blob.size) throw new Error('没有收到有效录音；请检查麦克风后重录。')
           if (!round.recording) {
@@ -1338,14 +2128,15 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
           }
           if (!liveActive(round)) return
           setLiveText(round.transcript)
-          setCaptionStatus('以下为阿昆本地完整录音转写，已替换浏览器预览字幕。')
+          setCaptionEntries([]); setSpeakerNames({})
+          setCaptionStatus('以下为阿昆本地完整录音转写，不是实时字幕。')
           setLiveStage('正在根据阿昆全文生成会议纪要…')
-          const body = { transcript: round.transcript, template_type: round.template, source: 'live-record', recording_id: round.recording.recording_id }
-          if (round.meetingId) body.meeting_id = round.meetingId
-          const data = await liveRequest('/generate-text', json(body))
+          const body = minutesTaskBody({ transcript: round.transcript, template: round.template, source: 'live-record', recordingId: round.recording.recording_id, meetingId: round.meetingId, model: modelForRun, wordTemplateId: wordTemplate?.templateId || '' })
+          const data = await runGeneration035(body, { signal:round.controller.signal, onProgress:setLiveStage })
           if (!liveActive(round)) return
+          setWordTemplate(null)
           setMinutes(data.minutes)
-          setDraft(null)
+          setDraft(null); setEditing(false)
           showToast(t.generated, 'success')
           refreshMeetings()
         } catch (error) { if (liveActive(round)) showToast(`${t.requestFailed}: ${error.message || '处理失败，录音已保留，可重试。'}`, 'error') }
@@ -1353,10 +2144,12 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
       }
 
       function cancelLive() {
+        retainedLiveRound = null
         const round = liveRoundRef.current
         if (round) {
           round.endCaption?.('cancelled')
           round.cancelled = true
+          round.localCaption?.cancel()
           round.controller.abort()
           stopLive()
           if (round.stream) round.stream.getTracks().forEach((track) => track.stop())
@@ -1366,7 +2159,7 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
         liveFinalRef.current = ''
         if (liveMountedRef.current) {
           setRecording(false); setLiveStarting(false); setLiveBusy(false)
-          setLiveText(''); setInterim(''); setElapsed(0); setLiveStage(''); setCaptionStatus(''); setAudioUrl('')
+          setLiveText(''); setInterim(''); setCaptionEntries([]); setSpeakerNames({}); setElapsed(0); setLiveStage(''); setCaptionStatus(''); setAudioUrl('')
         }
       }
 
@@ -1455,7 +2248,7 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
           const secs = Math.round(el.duration)
           if (!secs) return
           request(`/recordings/${encodeURIComponent(uploadRec.recording_id)}`, patch({ duration_seconds: secs }))
-            .then((data) => { if (data && data.recording) setUploadRec(data.recording) })
+            .then((data) => { if (data && data.recording) setUploadRec(current => current?.recording_id === data.recording.recording_id ? data.recording : current) })
             .catch(() => {})
         } catch { /* 静默 */ }
       }
@@ -1465,7 +2258,9 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
         e.target.value = ''
         if (!file) return
         const reader = new FileReader()
-        reader.onload = () => setUpTranscript(String(reader.result || ''))
+        const boundId = uploadRec?.recording_id
+        reader.onload = () => { if (uploadRecRef.current?.recording_id === boundId) setUpTranscript(String(reader.result || '')) }
+        reader.onerror = () => showToast('转写文本读取失败。', 'error')
         reader.readAsText(file)
       }
 
@@ -1483,45 +2278,13 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
         }
       }
 
-      // 「播放并实时转写」（实验性）：外放音频 + 麦克风收音识别，最终文本并入 textarea
-      function playAndTranscribe() {
-        if (!uploadRec || !SR || playingRef.current) return
-        playingRef.current = true
-        setPlayingRec(true)
-        try {
-          const rec = new SR()
-          rec.continuous = true
-          rec.interimResults = true
-          rec.lang = lang === 'en' ? 'en-US' : 'zh-CN'
-          rec.onresult = (ev) => {
-            for (let i = ev.resultIndex; i < ev.results.length; i++) {
-              const r = ev.results[i]
-              if (r.isFinal) {
-                const seg = String((r[0] && r[0].transcript) || '').trim()
-                if (seg) setUpTranscript((txt) => (txt ? `${txt}\n` : '') + seg)
-              }
-            }
-          }
-          rec.onerror = () => { /* 忽略识别错误 */ }
-          rec.onend = () => { if (playingRef.current) { try { rec.start() } catch { /* ignore */ } } }
-          rec.start()
-          upSrRef.current = rec
-        } catch { showToast(t.playTranscribeHint, 'warn') }
-        try {
-          const el = upAudioRef.current
-          if (el) { el.currentTime = 0; el.play() }
-        } catch { /* ignore */ }
-      }
-
-      function stopPlayTranscribe() {
-        playingRef.current = false
-        setPlayingRec(false)
-        try { if (upSrRef.current) { upSrRef.current.onend = null; upSrRef.current.stop(); upSrRef.current = null } } catch { /* ignore */ }
-        try { const el = upAudioRef.current; if (el) el.pause() } catch { /* ignore */ }
-      }
+       // Candidate: browser speech recognition is forbidden; use the existing local full-file ASR instead.
 
       async function generateUpload() {
-        if (!uploadRec || upBusy || upProgress >= 0) return
+        if (!uploadRec || contextBusy || !templateReady) return
+        if (dirty && !window.confirm('生成新纪要将替换预览中的未保存修改。继续？')) return
+        const generationBase = minutesTaskBody({ transcript: '', template, meetingId: targetId, recordingId: uploadRec.recording_id, source: 'upload', model: taskModel, wordTemplateId: wordTemplate?.templateId || '' })
+        minuteLoadSeq.current++; setMinuteLoad('ready')
         setUpBusy(true)
         try {
           let finalTranscript = upTranscript.trim()
@@ -1537,11 +2300,11 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
             await request(`/recordings/${encodeURIComponent(uploadRec.recording_id)}`, patch({ transcript: finalTranscript }))
           }
           setUpStage('正在根据完整转写生成会议纪要…')
-          const body = { transcript: finalTranscript, template_type: template, recording_id: uploadRec.recording_id, source: 'upload' }
-          if (targetId) body.meeting_id = targetId
-          const data = await request('/generate-text', json(body))
+          const body = { ...generationBase, transcript: finalTranscript }
+          const data = await runGeneration035(body)
+          setWordTemplate(null)
           setMinutes(data.minutes)
-          setDraft(null)
+          setDraft(null); setEditing(false)
           showToast(t.generated, 'success')
           refreshMeetings()
         } catch (e) {
@@ -1552,10 +2315,13 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
         }
       }
 
-      // 切换来源模式：录音中切走则丢弃录音；播放转写中切走则停止
-      function switchSrc(mode) {
-        if (srcMode === 'live' && mode !== 'live' && liveRoundRef.current) cancelLive()
-        if (srcMode === 'upload' && mode !== 'upload' && playingRec) stopPlayTranscribe()
+      // Switching source never discards a sealed Blob. In-flight processing keeps the source locked.
+      async function switchSrc(mode) {
+        if (mode === srcMode) return
+        if (recording || liveStarting) {
+          if (!window.confirm('切换来源前先停止并保留完整录音？')) return
+          if (!await sealLive()) return
+        } else if (contextBusy) return showToast('当前任务处理中，稍后切换来源。', 'warn')
         setSrcMode(mode)
       }
 
@@ -1565,26 +2331,51 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
       const liveDownloadExt = liveBlobType.includes('mp4') ? 'm4a' : liveBlobType.includes('ogg') ? 'ogg' : liveBlobType.includes('wav') ? 'wav' : 'webm'
       const recFileName = `meetai-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.${liveDownloadExt}`
 
+      // Both sources and the final transcript use the same avatar/bubble renderer.
+      const displayCaptionEntries = !recording && liveText ? formalCaptionEntries(liveText) : captionEntries
+      const captionLines = h('div', { className: 'mt-livewrap', 'aria-live': 'polite' },
+           displayCaptionEntries.map(entry => {
+             const speaker = entry.speakerId ? (speakerNames[entry.speakerId] || '发言人 ' + String(entry.speakerId).replace(/^spk-/, '')) : '未知发言人'
+             const seconds = Math.max(0, Math.floor(Number(entry.startMs || 0) / 1000))
+             const timestamp = `${pad2(Math.floor(seconds / 3600))}:${pad2(Math.floor(seconds / 60) % 60)}:${pad2(seconds % 60)}`
+             return h('div', { className: 'mt-caption-row', key: entry.utteranceId },
+               h('span', { className: 'mt-caption-avatar', 'aria-hidden': true }, entry.speakerId ? String(entry.speakerId).replace(/^spk-/, '') : '？'),
+               h('div', { className: 'mt-caption-bubble' + (entry.kind === 'interim' ? ' interim' : '') },
+                 h('div', { className: 'mt-caption-meta' },
+                   entry.speakerId ? h('button', { type: 'button', className: 'mt-caption-rename', title: '只修改本轮预览昵称', onClick: () => {
+                     const next = window.prompt('仅在当前实时预览中重命名发言人', speaker)
+                     if (next && next.trim()) setSpeakerNames(names => ({ ...names, [entry.speakerId]: next.trim().slice(0, 32) }))
+                   } }, speaker) : h('span', null, speaker),
+                   Number.isFinite(entry.startMs) ? h('span', null, timestamp) : null,
+                    entry.source ? h('span', null, entry.source) : null,
+                   entry.confidenceState !== 'confirmed' ? h('span', null, '待确认') : null,
+                 ),
+                 h('div', { className: 'mt-caption-text' }, entry.text || '识别中…'),
+               ),
+             )
+           }),
+           !displayCaptionEntries.length ? h('div', { className: 'mt-muted' }, '等待所选来源的字幕；无可靠分人信息时显示未知发言人，完整录音独立保留。') : null,
+         )
       const livePanel = h('div', { className: 'mt-stack' },
-        !liveSupported ? h('div', { className: 'mt-notice' }, '需要安全HTTPS页面、麦克风权限和MediaRecorder；建议使用Edge/Chrome。') : null,
-        captionStatus ? h('div', { className: 'mt-notice', role: 'status' }, captionStatus) : null,
-        liveStage ? h('div', { className: 'mt-row', role: 'status' }, h('span', { className: 'mt-spin' }), ' ', liveStage) : null,
-        recording
-          ? h('div', { className: 'mt-stack' },
-              h('div', { className: 'mt-row' }, h('span', { className: 'mt-recdot', 'aria-hidden': true }), h('span', { className: 'mt-time' }, mmss(elapsed)), h('span', { className: 'mt-pill red' }, t.recLive)),
-              h('div', { className: 'mt-livewrap' },
-                liveText ? liveText.split('\n').map((line, i) => h('div', { className: 'mt-liveline', key: i }, line)) : null,
-                interim ? h('div', { className: 'mt-liveline interim' }, interim) : null,
-                !liveText && !interim ? h('div', { className: 'mt-muted' }, t.recHint) : null),
-              h('div', { className: 'mt-row' }, h('button', { className: 'mt-btn success', disabled: liveBusy, onClick: finishLive }, '⏹ ', t.finishAndGenerate), h('button', { className: 'mt-btn', onClick: cancelLive }, t.cancelRec)))
-          : h('div', { className: 'mt-stack' },
-              h('div', { className: 'mt-row' }, h('button', { className: 'mt-btn primary', disabled: !liveSupported || liveBusy || liveStarting, onClick: startLive }, '🎙 ', t.startRec),
-                liveStarting || liveBusy ? h('button', { className: 'mt-btn', onClick: cancelLive }, t.cancelRec) : null),
-              audioUrl ? h('div', { className: 'mt-stack' },
-                h('audio', { controls: true, src: audioUrl, style: { width: '100%' } }),
-                h('div', { className: 'mt-row' }, h('a', { className: 'mt-btn small', href: audioUrl, download: recFileName }, '⬇ ', t.downloadRec),
-                  h('button', { className: 'mt-btn primary', disabled: liveBusy || liveStarting, onClick: finishLive }, '重试全文识别 / 生成纪要')),
-                liveText ? h('div', { className: 'mt-livewrap' }, liveText.split('\n').map((line, i) => h('div', { className: 'mt-liveline', key: i }, line))) : null) : null),
+        !liveSupported ? h('div', { className: 'mt-notice' }, '需要安全HTTPS页面、麦克风权限和MediaRecorder；建议Edge/Chrome。') : null,
+        h('div', { className: 'mt-rec-center' },
+          h('button', { className: 'mt-record-knob' + (recording ? ' recording' : ''), disabled: liveBusy || liveStarting || busy || upBusy || !liveSupported || !templateReady, onClick: recording ? sealLive : startLive, 'aria-label': recording ? '停止并封存录音' : '开始录音' }, recording ? '■' : '🎙'),
+          h('b', { className: 'mt-time' }, mmss(elapsed)),
+          h('span', { className: 'mt-muted' }, recording ? '正在录音 · 点击停止只封存，不自动生成' : audioUrl ? '完整录音已封存，可回放和下载' : '点击开始录音'),
+        ),
+        liveStage ? h('div', { className: 'mt-notice', role: 'status' }, liveBusy || liveStarting ? h('span', { className: 'mt-spin' }) : null, ' ', liveStage) : null,
+        h('div', { className: 'mt-row mt-between' }, h('div', { className: 'mt-row', style: { flexWrap: 'wrap' } }, h('b', null, '字幕预览'),
+          h('select', { className: 'mt-select', value: captionSource, disabled: recording || liveStarting, 'aria-label': '实时字幕来源', style: { width: 'auto', maxWidth: 260 }, onChange: event => {
+            if (!recording && !liveStarting && ['browser', 'local'].includes(event.target.value)) setCaptionSource(event.target.value)
+          } }, h('option', { value: 'browser' }, '浏览器 SpeechRecognition'), h('option', { value: 'local' }, '服务器本地模型'))), h('button', { className: 'mt-btn small', disabled: !recording && !displayCaptionEntries.length, onClick: () => { setCaptionPosition(pos => clampCaptionPosition(pos.x, pos.y, window.innerWidth, window.innerHeight)); setFloatingCaption(open => !open) } }, floatingCaption ? '收回字幕' : '悬浮字幕')),
+        h('div', { className: 'mt-muted' }, captionStatus || (captionSource === 'local' ? '服务器本地模型分段识别；浏览器需保持局域网连接。' : '浏览器SpeechRecognition提供临时字幕；纪要以完整录音正式转写为准。')),
+        floatingCaption ? null : captionLines,
+        audioUrl ? h('div', { className: 'mt-stack' },
+          h('audio', { ref: liveAudioRef, controls: true, src: audioUrl, style: { width: '100%' }, onLoadedMetadata: event => { const duration = event.currentTarget.duration; setPlayDuration(Number.isFinite(duration) ? duration : elapsed) }, onTimeUpdate: event => setPlayPosition(event.currentTarget.currentTime) }),
+          h('div', { className: 'mt-row' }, h('span', { className: 'mt-time' }, mmss(playPosition)), h('input', { type: 'range', min: 0, max: Math.max(1, playDuration || elapsed), step: 0.1, value: Math.min(playPosition, playDuration || elapsed || 1), className: 'mt-seek', disabled: !(playDuration || elapsed), 'aria-label': '录音回放位置', onChange: event => { const seconds = Number(event.target.value); if (liveAudioRef.current) liveAudioRef.current.currentTime = seconds; setPlayPosition(seconds) } }), h('span', { className: 'mt-time' }, mmss(playDuration || elapsed))),
+          h('div', { className: 'mt-row' }, h('a', { className: 'mt-btn small', href: audioUrl, download: recFileName }, '↓ ' + t.downloadRec), h('button', { className: 'mt-btn small danger', disabled: liveBusy, onClick: discardLive }, '放弃录音')),
+        ) : recording || liveStarting ? h('button', { className: 'mt-btn small danger', onClick: discardLive }, t.cancelRec) : null,
+        h('div', { className: 'mt-row mt-between' }, h(TaskModelPicker, { catalog: modelCatalog, value: taskModel, onChange: setTaskModel, disabled: contextBusy }), h('button', { className: 'mt-btn primary', disabled: !audioUrl || contextBusy || !templateReady, onClick: finishLive }, liveBusy ? '正在正式处理…' : '✦ 生成纪要')),
       )
 
       // —— 面板 B：上传录音 ——
@@ -1611,9 +2402,8 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
               h('audio', {
                 ref: upAudioRef, controls: true,
                 src: `${API}/recordings/${encodeURIComponent(uploadRec.recording_id)}/file`,
-                style: { width: '100%' }, onLoadedMetadata: saveRecDuration, onEnded: stopPlayTranscribe,
+                style: { width: '100%' }, onLoadedMetadata: saveRecDuration,
               }),
-              playingRec ? h('div', { className: 'mt-row' }, h('span', { className: 'mt-recdot' }), h('span', { className: 'mt-muted' }, t.playTranscribe)) : null,
             )
           : null,
         h('textarea', { className: 'mt-textarea', style: { minHeight: 110 }, value: upTranscript, placeholder: '[14:30:00] 张总：本季度预算……', onChange: (e) => setUpTranscript(e.target.value) }),
@@ -1621,10 +2411,8 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
           h('button', { className: 'mt-btn small', disabled: !uploadRec || !upTranscript.trim() || upSaving, onClick: saveUpTranscript }, '💾 ', t.saveTranscript),
           h('button', { className: 'mt-btn small', onClick: () => upTxtRef.current && upTxtRef.current.click() }, t.importTxtSrt),
           h('input', { ref: upTxtRef, type: 'file', accept: '.txt,.srt', style: { display: 'none' }, onChange: importUpTxt }),
-          h('button', { className: 'mt-btn small', disabled: !uploadRec || !SR || playingRec, title: t.playTranscribeHint, onClick: playAndTranscribe }, '▶ ', t.playTranscribe),
-          playingRec ? h('button', { className: 'mt-btn small', onClick: stopPlayTranscribe }, '⏹ ', t.stopPlayTranscribe) : null,
         ),
-        h('div', { className: 'mt-muted' }, 'ℹ️ ', t.playTranscribeHint),
+        h('div', { className: 'mt-muted', role: 'status' }, '上传录音的浏览器语音识别已停用；可继续回放、手工修订，或使用本地阿昆对完整录音正式转写。'),
       )
 
       // —— 面板 C：粘贴文本（保持旧行为） ——
@@ -1635,96 +2423,75 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
         ),
         h('textarea', { className: 'mt-textarea', style: { minHeight: 150 }, value: transcript, placeholder: '[14:30:00] 张总：本季度预算……', onChange: (e) => setTranscript(e.target.value) }),
         h('input', { ref: txtRef, type: 'file', accept: '.txt,.md,.srt', style: { display: 'none' }, onChange: (e) => importFile(e, 'transcript') }),
+        h('div', { className: 'mt-row mt-between' }, h(TaskModelPicker, { catalog: modelCatalog, value: taskModel, onChange: setTaskModel, disabled: contextBusy }), h('button', { className: 'mt-btn primary', disabled: !targetId || !transcript.trim() || contextBusy || !templateReady, onClick: generate }, busy ? t.generating : '✦ ' + t.generateBtn)),
       )
 
-      return h('div', { className: 'mt-stack' },
-        h('div', { className: 'mt-card mt-row mt-between' },
-          h('div', { className: 'mt-row' },
-            '🔗 ', h('strong', null, t.bindMeeting),
-            h('select', {
-              className: 'mt-select', value: targetId,
-              disabled: recording || liveStarting || liveBusy || upBusy || upProgress >= 0,
-              onChange: (e) => { if (liveRoundRef.current) cancelLive(); setUploadRec(null); setUpTranscript(''); setTargetId(e.target.value) },
-            },
-              h('option', { value: '' }, meetings.length ? t.pickMeeting : t.noMeetingsForMinutes),
-              meetings.map((m) => h('option', { key: m.id, value: m.id }, `${m.title}（${fmtDay(m.start_time)}）`)),
-            ),
-            MinutesPill({ value: statusValue, t }),
-          ),
-          h('button', {
-            className: 'mt-btn success', disabled: busy || !minutes || (minutes && minutes.is_archived),
-            onClick: archive, title: minutes && minutes.is_archived ? t.minutesStatusArchived : '',
-          }, '✓ ', t.archiveBtn),
+      const splitLatestRef=useRef(null);splitLatestRef.current={targetId,blocked:contextBusy||dirty}
+      useEffect(()=>()=>{splitLatestRef.current=null},[])
+      return h('div', { className: 'mt-stack mt-minutes-view' },
+        h(SplitLegacyPanel,{key:targetId,meetingId:targetId,locked:contextBusy||dirty,showToast,onLatest:async id=>{if(splitLatestRef.current?.blocked)return;const owner=targetId,seq=++minuteLoadSeq.current;try{const data=await request('/minutes/'+encodeURIComponent(id));if(splitLatestRef.current?.targetId===owner&&!splitLatestRef.current?.blocked&&seq===minuteLoadSeq.current&&data.minutes?.meeting_id===owner){setMinutes(data.minutes);setDraft(null);setEditing(false)}}catch(error){if(splitLatestRef.current?.targetId===owner)showToast(error.message,'error')}}}),
+        h('div', { className: 'mt-card mt-context' },
+          h('label', { className: 'mt-field' }, '会议绑定（录音可不绑定，粘贴文本需绑定）', h('select', { className: 'mt-select', value: targetId, disabled: contextLocked, title: audioUrl ? '保留录音的会议绑定已锁定；请先下载并放弃录音再改绑' : contextBusy ? '任务处理中，暂不能改绑' : '', onChange: event => changeMeeting(event.target.value) }, h('option', { value: '' }, '不绑定会议 / 独立录音纪要'), meetings.map(item => h('option', { value: item.id, key: item.id }, item.title + '（' + fmtDay(item.start_time) + '）')))),
+          h('label', { className: 'mt-field' }, '纪要模板', h('select', { className:'mt-select', value:template, disabled:contextLocked || templateCatalog.state!=='ready', onChange:event=>setTemplate(event.target.value) }, templateCatalog.rows.map(item=>h('option',{key:item.id,value:item.id},item.name)))),
+          h('div', { className:'mt-field' }, h('span', null, '上传Word模板（仅本次）'),
+            h('div', {className:'mt-word-pick035'}, h('button',{className:'mt-btn small',disabled:contextBusy,onClick:()=>wordInput.current?.click()},wordBusy?'验证中…':'选择文件'),
+              h('span',{className:'mt-chip',title:wordTemplate?.name || '未选择文件'},wordTemplate?.name || '未选择文件'),wordTemplate?h('button',{className:'mt-btn small',disabled:contextBusy,onClick:removeWordTemplate,'aria-label':'移除本次Word模板'},'移除'):null),
+            h('input',{ref:wordInput,type:'file',accept:'.docx',style:{display:'none'},onChange:pickWordTemplate}),
+            h('span',{className:'mt-muted'},'成功生成后消费一次；人工编辑／导出不会消费模板。')),
+          h('div', { className:'mt-row mt-context-status035' }, MinutesPill({value:statusValue,t}),h('button',{className:'mt-btn small',disabled:contextBusy,onClick:refreshCatalogs},'刷新模板 / 模型')),
+          templateCatalog.state !== 'ready' ? h('div', { className: 'mt-notice' }, templateCatalog.state === 'loading' ? '模板加载中…' : '真实模板加载失败，请重试。') : null,
         ),
-        // 绑定会议为可选：实时录音/上传录音可独立生成纪要；粘贴文本保持旧行为（需绑定）
-        h('div', { className: 'mt-tcard' },
-          h('div', { className: 'mt-stack' },
-            h('div', { className: 'mt-card mt-stack' },
-              h('div', { className: 'mt-seg', role: 'tablist' },
-                [['live', '🎙 ', t.srcLive], ['upload', '📁 ', t.srcUpload], ['paste', '⌨️ ', t.srcPaste]].map(([v, icon, label]) =>
-                  h('button', { key: v, 'aria-pressed': srcMode === v, onClick: () => switchSrc(v) }, icon, label),
-                ),
-              ),
-              srcMode === 'live' ? livePanel : null,
-              srcMode === 'upload' ? uploadPanel : null,
-              srcMode === 'paste' ? pastePanel : null,
-            ),
-            h('div', { className: 'mt-card mt-stack' },
-              h('h3', { className: 'mt-h3', style: { margin: 0 } }, '🧩 ', t.templateLabel),
-              h('div', { className: 'mt-tplgrid' },
-                [['weekly', '周例会', '进展、问题与待办'], ['communication', '项目沟通会', '项目沟通与下一步安排'], ['special', '专题推进会', '专题议题与责任分工']].map(([id, name, sub]) =>
-                  h('button', { key: id, className: 'mt-tpl', 'aria-pressed': template === id, onClick: () => setTemplate(id) },
-                    h('b', null, name), h('span', null, sub),
-                  ),
-                ),
-              ),
-              srcMode === 'live'
-                ? h('div', { className: 'mt-muted' }, '✦ ', t.liveAutoHint)
-                : srcMode === 'upload'
-                  ? h('button', { className: 'mt-btn primary', disabled: upBusy || upProgress >= 0 || !uploadRec, onClick: generateUpload }, upBusy ? h('span', null, h('span', { className: 'mt-spin' }), ' ', upStage || t.generating) : ['✦ ', t.generateBtn])
-                  : h('button', { className: 'mt-btn primary', disabled: busy || !transcript.trim(), onClick: generate }, busy ? h('span', { className: 'mt-spin' }) : '✦ ', busy ? t.generating : t.generateBtn),
-            ),
-          ),
-          h('div', { className: 'mt-stack' },
-            minutes
-              ? h('div', { className: 'mt-card mt-stack' },
-                  h('div', { className: 'mt-row mt-between' },
-                    h('div', { className: 'mt-row' },
-                      h('strong', null, t.contentTitle.split('（')[0]),
-                      h('span', { className: 'mt-pill gray' }, t.versionLabel(minutes.version || 1)),
-                      h('span', { className: 'mt-pill blue' }, sourceLabel[minutes.source] || t.sourceAi),
-                    ),
-                    h('div', { className: 'mt-row' },
-                      h('button', { className: 'mt-btn small', onClick: copyAll }, t.copyAll),
-                      h('button', { className: 'mt-btn small', onClick: () => impRef.current && impRef.current.click() }, t.importFixed),
-                      h('input', { ref: impRef, type: 'file', accept: '.txt,.md,.markdown', style: { display: 'none' }, onChange: (e) => importFile(e, 'import') }),
-                      h('button', { className: 'mt-btn small primary', disabled: busy || draft === null, onClick: () => saveContent('edit') }, t.saveBtn),
-                    ),
-                  ),
-                  minutes.is_archived && minutes.archive_fingerprint
-                    ? h('div', { className: 'mt-stack', style: { gap: 4 } },
-                        h('span', { className: 'mt-pill green' }, '🔐 ', t.fingerprintLabel),
-                        h('div', { className: 'mt-fp' }, minutes.archive_fingerprint),
-                      )
-                    : null,
-                  h('textarea', { className: 'mt-textarea', style: { minHeight: 260, fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 12.5 }, value: content, onChange: (e) => setDraft(e.target.value) }),
-                  h('div', null,
-                    h('div', { className: 'mt-h3' }, '☑ ', t.actionItems),
-                    (minutes.action_items || []).length
-                      ? minutes.action_items.map((item) =>
-                          h('label', { className: 'mt-todo', key: item.task_id },
-                            h('input', { type: 'checkbox', checked: item.completed === true, onChange: () => toggleTodo(item) }),
-                            h('span', { className: 'mt-grow' + (item.completed ? ' done' : '') }, item.content),
-                            item.assignee ? h('span', { className: 'mt-chip' }, '👤 ', item.assignee) : null,
-                            item.due_date ? h('span', { className: 'mt-chip' }, '⏱ ', item.due_date) : null,
-                          ),
-                        )
-                      : h('div', { className: 'mt-muted' }, t.noActionItems),
-                  ),
-                )
-              : h('div', { className: 'mt-empty' }, h('div', { style: { fontWeight: 700, marginBottom: 4 } }, t.noMinutes), h('div', { className: 'mt-muted' }, t.noMinutesHint)),
-          ),
+        h('section', { className: 'mt-card mt-stack', 'aria-label': '纪要来源' },
+          h('div', { className: 'mt-seg mt-source-tabs', role: 'tablist' }, [['live', '🎙 实时录音'], ['upload', '📁 上传录音'], ['paste', '⌨ 粘贴文本']].map(([id, label]) => h('button', { key: id, 'aria-pressed': srcMode === id, disabled: contextBusy && !recording && !liveStarting, onClick: () => switchSrc(id) }, label))),
+          srcMode === 'live' ? livePanel : null,
+          srcMode === 'upload' ? h('div', { className: 'mt-stack' }, uploadPanel, h('div', { className: 'mt-row mt-between' }, h(TaskModelPicker, { catalog: modelCatalog, value: taskModel, onChange: setTaskModel, disabled: contextBusy }), h('button', { className: 'mt-btn primary', disabled: !uploadRec || contextBusy || !templateReady, onClick: generateUpload }, upBusy ? upStage || '正在处理…' : '✦ ' + t.generateBtn))) : null,
+          srcMode === 'paste' ? pastePanel : null,
         ),
+        generationProgress035 ? h("div",{className:"mt-notice",role:"status"},generationProgress035.label,
+          generationActive035 && generationProgress035.progress?.phase !== "committing" ? h("button",{className:"mt-btn small",onClick:()=>generationAbort035.current?.abort()},"取消纪要处理（保留录音与转写）") : null,
+          !generationActive035 && generationProgress035.task_id && ["interrupted","cancelled","unresolved"].includes(generationProgress035.state) ? h("button",{className:"mt-btn small",disabled:contextBusy,onClick:resumeGeneration035},"恢复上次任务") : null,
+          !generationActive035 && generationProgress035.state==="unresolved" ? h("button",{className:"mt-btn small",onClick:()=>inspectGrounding035(generationProgress035.task_id)},"查看待审核验清单") : null,
+          generationProgress035.task_id ? h("div",{className:"mt-muted"},"任务参考："+generationProgress035.task_id) : null) : null,
+        h('section', { className: 'mt-card mt-stack mt-preview', 'aria-label': '纪要概览' },
+          h('div', { className: 'mt-row mt-between' },
+            h('div', { className: 'mt-row' }, h('h3', { className: 'mt-h3' }, '纪要概览'), minutes ? h('span', { className: 'mt-pill gray' }, t.versionLabel(minutes.version || 1)) : null, minutes ? h('span', { className: 'mt-pill blue' }, sourceLabel[minutes.source] || t.sourceAi) : null),
+            h('div', { className: 'mt-minute-tools' },
+              h('span', { className:'mt-muted' }, minutes?.is_archived?'已归档，只读查看':'直接在下方Word面板修改文字与排版'),
+              h('button', { className: 'mt-btn small primary', disabled: !previewReady || !nativeWordState.ready || !dirty || contextBusy || minutes?.is_archived, onClick: () => saveContent() }, '保存'),
+              h('button', { className: 'mt-btn small', disabled: !previewReady || contextBusy, onClick: copyAll }, '复制'),
+              h('button', { className: 'mt-btn small', disabled: !previewReady || !nativeWordState.ready || contextBusy, onClick: downloadMinutes }, '导出Word'),
+              h('button', { className: 'mt-btn small success', disabled: !previewReady || contextBusy || editing || dirty || minutes?.is_archived, title: editing || dirty ? '请先保存或取消编辑，再正式归档' : minutes?.is_archived ? '当前版本已正式归档' : '对已保存正文生成SHA256指纹', onClick: archive }, '正式归档'),
+              h('details', { className: 'mt-more' }, h('summary', { className: 'mt-btn small', 'aria-label': '纪要更多操作', 'aria-disabled': !previewReady || contextBusy, onClick: event => { if (!previewReady || contextBusy) event.preventDefault() } }, '更多 ▾'), h('div', { className: 'mt-more-menu' },
+                h('button', { className: 'mt-btn small', disabled: !minutes || contextBusy, onClick: () => impRef.current?.click() }, '导入修正版'),
+                h('button', { className: 'mt-btn small', disabled: !editing || contextBusy, onClick: cancelEdit }, '取消编辑'),
+                h('div', { className: 'mt-muted' }, '导入 / 保存将解除旧版归档；正式归档需再次明确操作。'),
+              )),
+              h('input', { ref: impRef, type: 'file', accept: '.txt,.md,.markdown', style: { display: 'none' }, onChange: event => importFile(event, 'import') }),
+            ),
+          ),
+          minuteLoad === 'loading' ? h('div', { className: 'mt-muted', role: 'status' }, '正在加载该会议纪要…') : null,
+          minuteLoad === 'error' ? h('div', { className: 'mt-notice' }, '纪要读取失败，不代表无记录。', h('button', { className: 'mt-btn small', onClick: () => loadMinutes(targetId) }, '重试')) : null,
+          minutes ? h('div', { className: 'mt-stack' },
+            minutes.is_archived && minutes.archive_fingerprint ? h('div', { className: 'mt-stack' }, h('span', { className: 'mt-pill green' }, '🔐 正式归档指纹'), h('div', { className: 'mt-fp' }, minutes.archive_fingerprint)) : null,
+            h(WordEditorPane, { key:minutes.minutes_id + ':' + Boolean(minutes.is_archived), minutes, apiRef:nativeWordApi, onState:setNativeWordState,
+              onSaved: saved => { setMinutes(saved); setDraft(null); setEditing(false); refreshMeetings() } }),
+            wordDocument?.warnings?.length ? h('details',null,h('summary',null,'字体与渲染差异说明'),wordDocument.warnings.map((warning,i)=>h('div',{key:i,className:'mt-muted'},warning))) : null,
+            h('div', null, h('h4', { className: 'mt-h3' }, '☑ ' + t.actionItems), (minutes.action_items || []).length ? minutes.action_items.map(item => h('label', { className: 'mt-todo', key: item.task_id }, h('input', { type: 'checkbox', checked: item.completed === true, disabled: contextBusy, onChange: () => toggleTodo(item) }), h('span', { className: 'mt-grow' + (item.completed ? ' done' : '') }, item.content), item.assignee ? h('span', { className: 'mt-chip' }, item.assignee) : null, item.due_date ? h('span', { className: 'mt-chip' }, item.due_date) : null)) : h('div', { className: 'mt-muted' }, t.noActionItems)),
+            minutes.grounding ? h('div', {className:'mt-notice',role:'note'}, minutes.grounding.notice, h('button',{className:'mt-btn small',disabled:contextBusy,onClick:()=>inspectGrounding035()},'查看完整原文与生成时核验清单')) : null,
+            minutes.generation_model ? h('div', { className: 'mt-muted' }, '实际生成模型：' + minutes.generation_model.provider + ' / ' + minutes.generation_model.model) : null,
+            h('details', null, h('summary', null, '版本历史'), h('div', { className: 'mt-muted' }, (minutes.history || []).map((row, index) => h('div', { key: index }, 'v' + row.version + ' · ' + row.source + ' · ' + row.saved_at)))),
+          ) : h('div', { className: 'mt-empty' }, h('b', null, t.noMinutes), h('p', null, '从上方选择来源并显式生成；无内容时操作保持禁用。')),
+        ),
+        groundingView035 && (groundingView035.owner === "minutes:"+minutes?.minutes_id || groundingView035.owner === "task:"+generationProgress035?.task_id) ? h("section",{className:"mt-card mt-stack","aria-label":"原文与覆盖核验审阅"},
+          h("h3",{className:"mt-h3"},"原文与覆盖核验审阅"),h("div",{className:"mt-notice"},"清单针对生成时的草稿，不证明后续人工修改仍覆盖全部事实；自动核验不是人工语义认证。"),
+          groundingView035.loading ? h("div",{role:"status"},"正在检查原文哈希并读取清单…") : null,
+          groundingView035.error ? h("div",{role:"alert"},groundingView035.error) : null,
+          groundingView035.data ? h("div",{className:"mt-stack"},h("details",null,h("summary",null,"完整转写原文（只读，非纪要编辑器）"),h("textarea",{className:"mt-textarea",readOnly:true,value:groundingView035.data.source,"aria-label":"完整转写原文",style:{width:"100%",minHeight:240,maxHeight:400,boxSizing:"border-box"}})),h("pre",{style:{whiteSpace:"pre-wrap",overflowWrap:"anywhere",maxHeight:420,overflow:"auto",margin:0}},groundingView035.data.report)) : null,
+          h("button",{className:"mt-btn small",onClick:()=>setGroundingView035(null)},"关闭审阅清单")) : null,
+        floatingCaption && visible ? h('div', { className: 'mt-caption-float', style: { left: captionPosition.x, top: captionPosition.y } },
+          h('div', { className: 'mt-caption-handle', onPointerDown: beginCaptionDrag, onPointerMove: moveCaption, onPointerUp: () => { captionDragRef.current = null }, onPointerCancel: () => { captionDragRef.current = null } }, h('b', null, liveRoundRef.current?.transcript ? '正式转写 · 完整音频' : '实时字幕 · 临时预览'), h('button', { className: 'mt-btn small', onClick: () => setFloatingCaption(false) }, '收回')),
+          captionLines,
+        ) : null,
       )
     }
 
@@ -1746,14 +2513,60 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
       })
     }
 
-    function AskView({ t, meetings, showToast, seed, refreshMeetings, sessions, refreshSessions, onActiveSession }) {
+// Classic factory helpers; no new Service/API, no external assets.
+function QaAvatar035({ role }) {
+  const user = role === 'user'
+  return h('svg', { viewBox: '0 0 36 36', width: 36, height: 36, role: 'img', 'aria-label': user ? '提问者头像' : '助手头像', className: 'mt-qa-avatar035' },
+    h('circle', { cx: 18, cy: 18, r: 17, fill: user ? '#e7f0ff' : '#dff7ef', stroke: user ? '#baceee' : '#b9dfd0' }),
+    user ? h('path', { d: 'M8 31c1-8 19-8 20 0', fill: '#86aee5' }) : h('path', { d: 'M18 5v4M11 27v4M25 27v4', stroke: '#64a99a', strokeWidth: 2 }),
+    user ? h('circle', { cx: 18, cy: 17, r: 9, fill: '#ffe5cc' }) : h('rect', { x: 8, y: 10, width: 20, height: 17, rx: 6, fill: '#a8dece', stroke: '#64a99a' }),
+    user ? h('path', { d: 'M9 16c0-13 20-13 18 1-6-1-9-5-10-6-1 3-4 5-8 5', fill: '#647da5' }) : null,
+    h('circle', { cx: 14, cy: 18, r: 1.3, fill: '#34546b' }), h('circle', { cx: 22, cy: 18, r: 1.3, fill: '#34546b' }),
+    h('path', { d: 'M14 22q4 4 8 0', fill: 'none', stroke: '#34546b', strokeWidth: 1.5, strokeLinecap: 'round' }))
+}
+/* mtQaTs-20261005：问答消息时间戳格式化 —— 今日 HH:mm / 同年 MM-DD HH:mm / 跨年 YYYY-MM-DD HH:mm；
+ * 无效值返回 ''（调用侧据此不渲染时间行）。与政策解读 paQaTs-20261005 同算法。 */
+function fmtQaMsgTime035(v) {
+  const p2 = (n) => String(n).padStart(2, '0')
+  let d = null
+  if (typeof v === 'number' && Number.isFinite(v)) d = new Date(v)
+  else if (typeof v === 'string' && v) { const n = new Date(v); if (!Number.isNaN(n.getTime())) d = n }
+  if (!d) return ''
+  const now = new Date()
+  const hm = p2(d.getHours()) + ':' + p2(d.getMinutes())
+  if (d.getFullYear() !== now.getFullYear()) return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' + hm
+  if (d.getMonth() !== now.getMonth() || d.getDate() !== now.getDate()) return p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' + hm
+  return hm
+}
+function QaMessage035({ role, ts, children }) {
+  const user = role === 'user'
+  const stamp = fmtQaMsgTime035(ts)
+  return h('div', { className: 'mt-qa-message035' + (user ? ' user' : ' assistant'), 'aria-label': user ? '提问者消息' : '助手消息' }, h(QaAvatar035, { role }), h('div', { className: 'mt-qa-col035' }, h('div', { className: 'mt-bubble ' + (user ? 'user' : 'ai') }, children), stamp ? h('div', { className: 'mt-qa-time035', title: stamp }, stamp) : null))
+}
+function qaAvailable035(top, bottom, padding) { return Math.max(120, Math.floor(bottom - top - padding)) }
+// kbcAsk-20261005：输入卡片手拖高度（null = 随内容自适应）
+function readDockHeight035(storage) {
+  try {
+    const raw = storage.getItem('meetai.askDockH.v1')
+    const value = Number(raw)
+    if (raw !== null && raw !== '' && Number.isFinite(value) && value >= 120 && value <= 1600) return Math.round(value)
+  } catch { /* ignore */ }
+  return null
+}
+
+    function RestrictedAskView({ t, meetings, showToast, seed, refreshMeetings, sessions, refreshSessions, onActiveSession, onNewChat, meetingsKnown }) {
       // 会话列表由 MeetingApp 持有（rail「历史对话」标签下展示），此处只读 + 通过 ref 供 seed.loadSession 查找
+      const [localHistory,setLocalHistory]=useState([]),[historyError,setHistoryError]=useState(''),[historyBusy,setHistoryBusy]=useState(false),[historyNext,setHistoryNext]=useState(null)
+      const historyEpoch=useRef(0),historyAlive=useRef(true),historyBusyRef=useRef(false),historyListEpoch=useRef(0)
+      useEffect(()=>{historyAlive.current=true;return()=>{historyAlive.current=false;historyEpoch.current++;historyListEpoch.current++}},[])
+      async function refreshRestrictedHistory(offset=0){const epoch=++historyListEpoch.current;try{const data=await request('/restricted-qa-sessions?limit=100&offset='+offset);if(historyAlive.current&&historyListEpoch.current===epoch){setLocalHistory(value=>offset?[...new Map([...value,...data.sessions].map(row=>[row.session_id,row])).values()]:data.sessions);setHistoryNext(data.nextOffset);setHistoryError('')}}catch(error){if(historyAlive.current&&historyListEpoch.current===epoch)setHistoryError('历史读取失败（未清空已有列表）：'+error.message)}}
       const sessionsRef = useRef([])
       const [activeId, setActiveId] = useState('')
       const [scope, setScope] = useState('all')
       const [messages, setMessages] = useState([])
       const [input, setInput] = useState('')
       const [busy, setBusy] = useState(false)
+      useEffect(()=>{if(!busy)void refreshRestrictedHistory()},[busy])
       const [source, setSource] = useState(null)
       // 流式应答态：stream = { text, status, think, tool }（busy 期间渲染接收中的 ai 气泡）
       const [stream, setStream] = useState(null)
@@ -1761,6 +2574,8 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
       const [files, setFiles] = useState([])
       const [uploading, setUploading] = useState(0)
       const [dragOver, setDragOver] = useState(false)
+      // @ 引用会议菜单（kbComposer-20261005）：选择后直接复用既有 scope 机制限定检索范围
+      const [kbcMention, setKbcMention] = useState(false)
       // 模型目录（GET /models）：state idle|loading|ready|fail；model 为 null = 跟随系统默认
       const [models, setModels] = useState({ state: 'idle', groups: [], def: null })
       const [model, setModel] = useState(null)
@@ -1774,63 +2589,892 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
       const answerRef = useRef('') // 本轮回答的权威累积文本（turn_end 收尾用它，避免 rAF 批次滞后）
       const pendingDelta = useRef('') // rAF 未刷新的 delta 缓冲
       const rafRef = useRef(0)
-      // 对话框高度（px）：默认 2 倍 520=1040，可拖拽 520~2200，localStorage 记忆
-      const [askH, setAskH] = useState(() => {
-        try {
-          const v = Number(window.localStorage.getItem('meetai.askH'))
-          if (Number.isFinite(v) && v >= 520 && v <= 2200) return Math.round(v)
-        } catch { /* localStorage 不可用时用默认值 */ }
-        return 1040
-      })
-      const askHRef = useRef(1040)
-      const resizeRef = useRef(null)
-      const startResizeRef = useRef(null)
-      // 事件回调里要读到的最新值（避免闭包旧 state）：消息 / 会话 id / 附件 / 模型
-      const messagesRef = useRef([])
-      const activeIdRef = useRef('')
-      const filesRef = useRef([])
-      const modelRef = useRef(null)
-
+      const [autoH035, setAutoH035] = useState(520)
+      const askWrapRef035 = useRef(null), followRef035 = useRef(true)
+      const [unseen035, setUnseen035] = useState(false)
+      // kbcAsk-20261005：对话区恒为可用高度；输入卡片高度单独记（null = 随内容自适应）
+      const [dockH035, setDockH035] = useState(() => readDockHeight035(window.localStorage))
+      const dockRef035 = useRef(null)
+      const askH = autoH035
+      const askHRef = useRef(askH), resizeRef = useRef(null), startResizeRef = useRef(null)
+      const dockMax035 = () => Math.max(160, (askHRef.current || autoH035) - 150)
+      const messagesRef = useRef([]), activeIdRef = useRef(''), filesRef = useRef([]), modelRef = useRef(null)
       useEffect(() => { messagesRef.current = messages }, [messages])
       useEffect(() => { activeIdRef.current = activeId }, [activeId])
       useEffect(() => { filesRef.current = files }, [files])
       useEffect(() => { modelRef.current = model }, [model])
       useEffect(() => { sessionsRef.current = Array.isArray(sessions) ? sessions : [] }, [sessions])
       useEffect(() => { askHRef.current = askH }, [askH])
-      // 拖拽调高：底部把手 mousedown → 文档级 mousemove/mouseup，松手持久化到 localStorage
       useEffect(() => {
-        const clampH = (v) => Math.max(520, Math.min(2200, Math.round(v)))
-        function onMove(e) {
-          if (!resizeRef.current) return
-          const next = clampH(resizeRef.current.startH + (e.clientY - resizeRef.current.startY))
-          resizeRef.current.latest = next // 同步记录最新高度（mouseup 时 state/ref 可能尚未刷新）
-          setAskH(next)
+        try {
+          if (dockH035 === null) window.localStorage.removeItem('meetai.askDockH.v1')
+          else window.localStorage.setItem('meetai.askDockH.v1', String(Math.round(dockH035)))
+        } catch { /* ignore */ }
+      }, [dockH035])
+      useEffect(() => {
+        const root = askWrapRef035.current; if (!root) return
+        const stage = root.closest('.mt-stage'), viewport = window.visualViewport
+        const box = root.parentElement
+        const measure = () => {
+          if (!root.isConnected || !root.getClientRects().length) return
+          const top = root.getBoundingClientRect().top
+          const viewBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight
+          const stageBottom = stage?.getBoundingClientRect().bottom || viewBottom
+          // kbcAsk-20261005：真正带底部内边距的滚动容器是 .mt-body（.mt-stage 的 padding 恒为 0）。
+          // 原先按 .mt-stage 算 → 面板比容器高 14px、出现滚动条 → 「输入框底边不在底部」。
+          const padBottom = box ? parseFloat(window.getComputedStyle(box).paddingBottom) || 0 : 0
+          const boxBottom = box ? box.getBoundingClientRect().bottom - padBottom : Infinity
+          const avail = qaAvailable035(top, Math.min(viewBottom, stageBottom, boxBottom) - 1, 0)
+          setAutoH035(avail)
+          setDockH035(prev => (prev === null ? prev : Math.min(prev, Math.max(160, avail - 150))))
         }
-        function onUp() {
-          if (!resizeRef.current) return
-          const finalH = typeof resizeRef.current.latest === 'number' ? resizeRef.current.latest : askHRef.current
-          resizeRef.current = null
-          setAskH(finalH)
-          try { document.documentElement.removeAttribute('data-mt-resizing') } catch { /* ignore */ }
-          try { window.localStorage.setItem('meetai.askH', String(finalH)) } catch { /* ignore */ }
-          window.removeEventListener('mousemove', onMove)
-          window.removeEventListener('mouseup', onUp)
-        }
-        startResizeRef.current = (e) => {
-          e.preventDefault()
-          if (resizeRef.current) return
-          resizeRef.current = { startY: e.clientY, startH: askHRef.current }
-          try { document.documentElement.setAttribute('data-mt-resizing', '1') } catch { /* ignore */ }
-          window.addEventListener('mousemove', onMove)
-          window.addEventListener('mouseup', onUp)
-        }
-        return () => {
-          window.removeEventListener('mousemove', onMove)
-          window.removeEventListener('mouseup', onUp)
-        }
+        measure(); window.addEventListener('resize', measure); viewport?.addEventListener('resize', measure); viewport?.addEventListener('scroll', measure)
+        const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null
+        if (stage) observer?.observe(stage); if (root.parentElement) observer?.observe(root.parentElement)
+        return () => { observer?.disconnect(); window.removeEventListener('resize', measure); viewport?.removeEventListener('resize', measure); viewport?.removeEventListener('scroll', measure) }
       }, [])
+      useEffect(() => {
+        const remove = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', end); window.removeEventListener('blur', end) }
+        // kbcAsk-20261005：把手在卡片上沿，向上拖 = 变高（下沿固定贴底）
+        const move = event => {
+          const info = resizeRef.current; if (!info) return
+          const next = Math.max(120, Math.min(dockMax035(), Math.round(info.height + (info.y - event.clientY))))
+          setDockH035(next)
+        }
+        const end = () => { resizeRef.current?.root?.removeAttribute('data-mt-resizing'); resizeRef.current=null; remove() }
+        startResizeRef.current = event => {
+          event.preventDefault(); if (resizeRef.current) return
+          const root = event.currentTarget.closest('.mt-app')
+          const dock = dockRef035.current
+          const rect = dock ? dock.getBoundingClientRect() : null
+          resizeRef.current = { y: event.clientY, height: rect && rect.height > 0 ? Math.round(rect.height) : 140, root }
+          root?.setAttribute('data-mt-resizing','1')
+          window.addEventListener('mousemove', move); window.addEventListener('mouseup', end); window.addEventListener('blur', end)
+        }
+        return () => { end(); startResizeRef.current = null }
+      }, [])
+      // kbcAsk-20261005：输入框随内容自适应加高（KB 插件同款：按 scrollHeight 回写内联高度，上限 200px）。
+      // 固定高度模式下 textarea 撑满卡片；内容比卡片还高时把卡片一并抬高。
+      useEffect(() => {
+        const el = inputRef.current; if (!el) return
+        if (dockH035 !== null) {
+          el.style.height = ''
+          const deficit = el.scrollHeight - el.clientHeight
+          if (deficit > 1) setDockH035(prev => (prev === null ? prev : Math.min(prev + deficit, dockMax035())))
+          return
+        }
+        el.style.height = 'auto'
+        el.style.height = Math.max(52, Math.min(el.scrollHeight, 200)) + 'px'
+      }, [input, dockH035])
+
       // 卸载清理：中止进行中的流式请求与未刷新的 rAF 批处理
       useEffect(() => () => {
+        try { if (abortRef.current) abortRef.current.abort() } catch { /* ignore */ }
+        try { if (rafRef.current && window.cancelAnimationFrame) window.cancelAnimationFrame(rafRef.current) } catch { /* ignore */ }
+      }, [])
+
+      // 会话 id 变更统一出口：本地 state + 上报 MeetingApp（rail 高亮当前会话）
+      const changeActive = useCallback((id) => {
+        setActiveId(id)
+        if (onActiveSession) onActiveSession(id)
+      }, [onActiveSession])
+
+      // 模型目录：GET /models → optgroup 分组；失败（503 MODEL_UNAVAILABLE 等）→ 选择器降级并提示
+      const loadModels = useCallback(async () => {
+        setModels((s) => ({ state: 'loading', groups: s.groups || [], def: s.def || null }))
+        try {
+          const data = await request('/models')
+          const groups = (Array.isArray(data.groups) ? data.groups : [])
+            .map((g) => ({
+              id: String((g && g.id) || ''),
+              name: String((g && g.name) || (g && g.id) || ''),
+              models: (Array.isArray(g && g.models) ? g.models : [])
+                .filter((m) => m && m.id)
+                .map((m) => ({ id: String(m.id), name: String(m.name || m.id) })),
+            }))
+            .filter((g) => g.id && g.models.length)
+          const def = data.default && data.default.provider && data.default.model
+            ? { provider: String(data.default.provider), model: String(data.default.model) }
+            : null
+          setModels({ state: 'ready', groups, def })
+          // 选中值兜底：当前选择仍在目录内则保留；否则回到「跟随系统默认」
+          setModel((cur) => {
+            if (!cur) return null
+            for (const g of groups) {
+              for (const m of g.models) {
+                if (g.id === cur.provider && m.id === cur.model) return cur
+              }
+            }
+            return null
+          })
+        } catch {
+          setModels({ state: 'fail', groups: [], def: null })
+          setModel(null)
+        }
+      }, [])
+      // Restricted QA is fixed to the approved local Huiwen model; no model discovery/picker.
+
+      // seed：gotoAsk（scope/question/auto）、「新建对话」（reset）与 rail 历史会话点击（loadSession）共用一个 nonce 通道
+      useEffect(() => {
+        if (!seed || !seed.nonce || seedSeen.current === seed.nonce) return
+        seedSeen.current = seed.nonce
+        if (seed.reset) {
+          // 全新对话：中止进行中的流式请求并清空全部会话态
+          try { if (abortRef.current) abortRef.current.abort() } catch { /* ignore */ }
+          answerRef.current = ''
+          pendingDelta.current = ''
+          changeActive('')
+          messagesRef.current = []
+          setMessages([])
+          setStream(null)
+          setInput('')
+          setFiles([])
+          setSource(null)
+          return
+        }
+        if (seed.loadSession) {
+          // rail 历史会话点击：优先用列表自带 messages，缺失则取详情
+          const s = sessionsRef.current.find((x) => x.session_id === seed.loadSession) || { session_id: seed.loadSession }
+          pickSession(s)
+          return
+        }
+        setScope(seed.scope || 'all')
+        if (seed.question) setInput(seed.question)
+        if (seed.auto && seed.question) send(seed.question, seed.scope || 'all')
+      }, [seed && seed.nonce])
+
+      useEffect(() => {
+        const el = scrollRef.current
+        if (el && followRef035.current) { el.scrollTop = el.scrollHeight; setUnseen035(false) } else if (el) setUnseen035(true)
+      }, [messages, busy, stream])
+
+      useEffect(() => { followRef035.current = true; setUnseen035(false); if(scrollRef.current)scrollRef.current.scrollTop=scrollRef.current.scrollHeight }, [activeId])
+      // 打开会话：rail「历史对话」点击（经 seed.loadSession）或列表项触发
+      async function pickSession(s) {
+        if (busy) return // 流式接收中禁止切换会话
+        const epoch=++historyEpoch.current;historyBusyRef.current=true;setHistoryBusy(true)
+        let msgs = null // Detail is server-owned; never trust list-embedded answers.
+        let detailScope=s.scope||'all'
+        if (!msgs) {
+          try {
+            const d = await request(`/restricted-qa-sessions/${encodeURIComponent(s.session_id)}`)
+            if(!historyAlive.current||historyEpoch.current!==epoch)return
+            if(d.session?.session_id!==s.session_id)throw new Error("历史会话标识不一致")
+            detailScope=d.session.scope
+            msgs = d.session && Array.isArray(d.session.messages) ? d.session.messages : []
+          } catch(error) { if(historyAlive.current&&historyEpoch.current===epoch)showToast('历史读取失败，当前对话保留：'+error.message,'error');return }
+          finally{if(historyAlive.current&&historyEpoch.current===epoch){historyBusyRef.current=false;setHistoryBusy(false)}}
+        }
+        changeActive(s.session_id)
+        setScope(detailScope);setSource(null)
+        messagesRef.current = Array.isArray(msgs)?msgs:[]
+        setMessages(messagesRef.current)
+        setStream(null)
+      }
+
+      /* —— 附件：📎 选择 / 整区拖拽 → 逐个 POST /upload?name= 落盘 → chips 展示（随 /qa 提交后清空） —— */
+
+      async function uploadOne(file) {
+        return showToast('受限问答不接收附件或执行工具。','warn')
+        if (!file) return
+        if (!UPLOAD_RE.test(file.name)) return showToast(`${t.attUnsupported}：${file.name}`, 'error')
+        if (file.size > UPLOAD_MAX) return showToast(`${t.attTooBig}：${file.name}`, 'error')
+        fileSeq.current += 1
+        const key = `f${fileSeq.current}`
+        setFiles((list) => [...list, { key, name: file.name, size: file.size, pending: true }])
+        setUploading((n) => n + 1)
+        try {
+          const resp = await fetch(`${API}/upload?name=${encodeURIComponent(file.name)}`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/octet-stream' },
+            credentials: 'same-origin',
+            body: file,
+          })
+          let data = null
+          try { data = await resp.json() } catch { /* 非 JSON 错误体 */ }
+          if (resp.ok && data && data.ok === true && data.file && data.file.path) {
+            setFiles((list) => list.map((x) => (x.key === key ? { ...x, pending: false, name: data.file.name || file.name, size: Number(data.file.size) || file.size, path: data.file.path } : x)))
+          } else {
+            const reason = (data && data.message) || `HTTP ${resp.status}`
+            setFiles((list) => list.filter((x) => x.key !== key))
+            showToast(`${t.attUploadFail}：${file.name} — ${reason}`, 'error')
+          }
+        } catch (e) {
+          setFiles((list) => list.filter((x) => x.key !== key))
+          showToast(`${t.attUploadFail}：${file.name} — ${e.message}`, 'error')
+        } finally {
+          setUploading((n) => Math.max(0, n - 1))
+        }
+      }
+
+      // 顺序上传（避免并发写盘与提示闪烁）；fileList 可为 FileList 或数组
+      async function handleFiles(fileList) {
+        return showToast('受限问答不接收附件或执行工具。','warn')
+        const arr = []
+        for (let i = 0; i < ((fileList && fileList.length) || 0); i++) arr.push(fileList[i])
+        for (const f of arr) await uploadOne(f)
+      }
+
+      function removeFile(key) {
+        setFiles((list) => list.filter((f) => f.key !== key))
+      }
+
+      // 拖拽上传：只拦截包含文件的拖拽（dataTransfer.types 含 'Files'），文本/富文本拖放保持默认行为
+      const hasFilesInDT = (e) => {
+        const dt = e && e.dataTransfer
+        if (!dt || !dt.types) return false
+        try { return Array.prototype.indexOf.call(dt.types, 'Files') !== -1 } catch { return false }
+      }
+      const onDragEnter = (e) => {
+        e.stopPropagation() /* kbcFix-20261005 */
+        if (!hasFilesInDT(e)) return
+        e.preventDefault()
+        dragDepth.current += 1
+        setDragOver(true)
+      }
+      const onDragOver = (e) => {
+        e.stopPropagation() /* kbcFix-20261005 */
+        if (!hasFilesInDT(e)) return
+        e.preventDefault()
+        try { e.dataTransfer.dropEffect = 'copy' } catch { /* ignore */ }
+      }
+      const onDragLeave = (e) => {
+        e.stopPropagation() /* kbcFix-20261005 */
+        if (!hasFilesInDT(e)) return
+        dragDepth.current = Math.max(0, dragDepth.current - 1)
+        if (dragDepth.current === 0) setDragOver(false)
+      }
+      // kbComposer-20261005：拖拽支持文件夹 —— 用 webkitGetAsEntry 递归收集，readEntries 必须循环取到空。
+      // 取不到条目（非 Chromium / 权限受限）时回退 dataTransfer.files，行为与改前一致。
+      async function kbcCollectEntry(entry, out) {
+        if (!entry) return
+        if (entry.isFile) {
+          await new Promise((resolve) => {
+            try { entry.file((f) => { if (f) out.push(f); resolve() }, () => resolve()) } catch { resolve() }
+          })
+          return
+        }
+        if (!entry.isDirectory) return
+        const reader = entry.createReader()
+        for (;;) {
+          const batch = await new Promise((resolve) => {
+            try { reader.readEntries((rows) => resolve(Array.prototype.slice.call(rows || [])), () => resolve([])) } catch { resolve([]) }
+          })
+          if (!batch.length) return
+          for (const kid of batch) await kbcCollectEntry(kid, out)
+        }
+      }
+      const onDrop = (e) => {
+        e.stopPropagation() /* kbcFix-20261005 */
+        if (!hasFilesInDT(e)) return
+        e.preventDefault()
+        dragDepth.current = 0
+        setDragOver(false)
+        const dt = e.dataTransfer
+        const entries = []
+        if (dt && dt.items) {
+          const items = Array.prototype.slice.call(dt.items)
+          for (const item of items) {
+            try { const entry = item.webkitGetAsEntry && item.webkitGetAsEntry(); if (entry) entries.push(entry) } catch { /* ignore */ }
+          }
+        }
+        if (!entries.length) {
+          const fl = dt ? dt.files : null
+          if (fl && fl.length) void handleFiles(fl)
+          return
+        }
+        // 注意：items 在 await 之后失效，条目必须同步取完再异步递归
+        void (async () => {
+          const out = []
+          for (const entry of entries) await kbcCollectEntry(entry, out)
+          if (out.length) await handleFiles(out)
+          else showToast('没有可用文件（文件夹为空或类型不支持）。', 'warn')
+        })()
+      }
+
+      // delta 增量 rAF 批量刷新：先入缓冲，每帧一次性并入气泡文本，降低 setState 频率
+      function pushDelta(chunk) {
+        pendingDelta.current += chunk
+        if (rafRef.current) return
+        rafRef.current = window.requestAnimationFrame
+          ? window.requestAnimationFrame(flushDelta)
+          : window.setTimeout(flushDelta, 16)
+      }
+      function flushDelta() {
+        rafRef.current = 0
+        if (!pendingDelta.current) return
+        const chunk = pendingDelta.current
+        pendingDelta.current = ''
+        setStream((s) => (s ? { ...s, text: s.text + chunk } : s))
+      }
+
+      /* —— 单一对话框：POST /qa（响应即 SSE）—— status 帧 setSessionId；delta 逐帧追加（rAF 批量）；
+       * tool 帧在气泡内显示「🔧 正在调用工具：{name}…」状态行；turn_end 完成（刷新会话列表 +
+       * refreshMeetings 日程/统计）；error 帧或网络错误在气泡内显示错误并 toast；
+       * busy 时输入框禁用、「发送」变「■ 停止」（AbortController abort）。 —— */
+
+      async function send(questionText, scopeOverride) {
+        if(historyBusyRef.current){showToast('请等待历史读取完成。','info');return}
+        if (busy) return
+        const question = String(questionText !== undefined ? questionText : input || '').trim()
+        if (!question) return
+        const useScope = scopeOverride || scope
+        const attach = filesRef.current.filter((f) => !f.pending).map((f) => ({ name: f.name, path: f.path }))
+        const userMsg = { role: 'user', content: question, created_at: new Date().toISOString() }
+        const nextMessages = [...messagesRef.current, userMsg]
+        messagesRef.current = nextMessages
+        setMessages(nextMessages)
+        setInput('')
+        answerRef.current = ''
+        pendingDelta.current = ''
+        setStream({ text: '', status: t.thinking, think: '', tool: '', startedAt: Date.now() })
+        setBusy(true)
+        const body = { question, scope: useScope }
+        if (activeIdRef.current) body.session_id = activeIdRef.current
+        const ctrl = new AbortController()
+        abortRef.current = ctrl
+        let errText = ''
+        let completed = false // only the server's persisted turn_end confirms completion
+        let sources=[],qaTurnId=null
+        try {
+          const resp = await fetch(API + '/restricted-qa', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(body),
+            signal: ctrl.signal,
+          })
+          // 前置错误（非 200，JSON {ok:false,code,message}）→ 直接抛出展示 message
+          if (!resp.ok || !resp.body) {
+            let reason = `HTTP ${resp.status}`
+            try {
+              const d = await resp.json()
+              if (d?.error?.code) reason=d.error.code+'：'+(d.error.message||'操作未完成');else if (d && d.message) reason = d.message
+            } catch { /* 非 JSON 错误体 */ }
+            throw new Error(reason)
+          }
+          setFiles([]) // 附件已随本次提问提交，清空附件区
+          // SSE 帧读取：按 \n\n 切帧 + data: 解析，':' 注释/心跳帧跳过
+          const reader = resp.body.getReader()
+          const dec = new TextDecoder()
+          let buf = ''
+          let closed = false
+          for (;;) {
+            const r = await reader.read()
+            if (r.done) break
+            buf += dec.decode(r.value, { stream: true })
+            let idx
+            while ((idx = buf.indexOf('\n\n')) >= 0) {
+              const raw = buf.slice(0, idx)
+              buf = buf.slice(idx + 2)
+              for (const line of raw.split('\n')) {
+                if (line.charCodeAt(0) === 58 /* ':' */) continue // SSE 注释/心跳帧
+                if (!line.startsWith('data:')) continue
+                let ev = null
+                try { ev = JSON.parse(line.slice(5).trim()) } catch { continue }
+                if (!ev || typeof ev !== 'object') continue
+                if (ev.type === 'status') {
+                  if (ev.sessionId) changeActive(ev.sessionId)
+                  if (typeof ev.text === 'string' && ev.text) setStream((s) => (s ? { ...s, status: ev.text } : s))
+                } else if (ev.type === 'sources') {
+                  sources=Array.isArray(ev.sources)?ev.sources.map((source,index)=>({...source,index:index+1,label:source.title,text:source.quote})):[];qaTurnId=ev.qaTurnId||null
+                } else if (ev.type === 'delta' && typeof ev.text === 'string') {
+                  answerRef.current += ev.text
+                  pushDelta(ev.text)
+                } else if (ev.type === 'tool' || ev.type === 'thinking') {
+                  throw new Error('受限问答协议不允许工具或未经批准的思考内容。')
+                } else if (ev.type === 'turn_end') {
+                  // 服务端已把本轮消息落盘；客户端收尾后刷新会话列表与日程/统计
+                  completed = true
+                  if (ev.sessionId) changeActive(ev.sessionId)
+                  closed = true
+                  break
+                } else if (ev.type === 'error') {
+                  errText = String(ev.message || t.askFailed)
+                  closed = true
+                  break
+                }
+              }
+              if (closed) break
+            }
+            if (closed) break
+          }
+          try { reader.cancel() } catch { /* 流已结束 */ }
+        } catch (e) {
+          if (!(e && e.name === 'AbortError')) errText = String((e && e.message) || e)
+        } finally {
+          abortRef.current = null
+          if (rafRef.current && window.cancelAnimationFrame) {
+            try { window.cancelAnimationFrame(rafRef.current) } catch { /* ignore */ }
+          }
+          rafRef.current = 0
+          pendingDelta.current = ''
+          // Only turn_end confirms a persisted turn. Keep partial text on error/stop/EOF, never silently call it saved.
+          if (!completed) {
+            const reason = errText || (ctrl.signal.aborted ? '已停止接收' : '连接已结束，但未收到完成确认')
+            errText = `${reason}；本回合未保存（未收到服务端完成确认）。`
+          }
+          const text = answerRef.current
+          let extra = null
+          if (errText) extra = { role: 'assistant', content: text, error: errText, created_at: new Date().toISOString() }
+          else if (text.trim()) extra = { role: 'assistant', content: text, sources,qaTurnId,queryScope:useScope,created_at: new Date().toISOString() }
+          if (extra) {
+            const finalMessages = [...messagesRef.current, extra]
+            messagesRef.current = finalMessages
+            setMessages(finalMessages)
+          }
+          setStream(null)
+          setBusy(false)
+          refreshSessions()
+          if (completed && !errText && typeof refreshMeetings === 'function') {
+            try { refreshMeetings() } catch { /* ignore */ }
+          }
+        }
+        if (errText) showToast(`${t.askFailed}: ${errText}`, 'error')
+      }
+
+      function stopStream() {
+        try { if (abortRef.current) abortRef.current.abort() } catch { /* ignore */ }
+      }
+
+      // 「➕ 新建会议」提示 chip：向输入框插入模板并聚焦（用户补全后发送，服务端建会 → turn_end 后 refreshMeetings 同步日程）
+      function insertMeetingTemplate() {
+        setInput((cur) => (cur && cur.trim() ? `${cur.replace(/\s*$/, '')}\n\n${MEETING_TEMPLATE}` : MEETING_TEMPLATE))
+        try { if (inputRef.current) inputRef.current.focus() } catch { /* ignore */ }
+      }
+
+      const presets = useMemo(() => {
+        const tomorrow = new Date(Date.now() + 86400000)
+        const tomorrowList = meetings.filter((m) => {
+          const s = new Date(m.start_time || '')
+          return Number.isFinite(s.getTime()) && sameDay(s, tomorrow)
+        })
+        const archived = meetings.find((m) => m.minutes_status === 'archived')
+        return [
+          '💡 各场会议有哪些待跟进任务与责任人？',
+          tomorrowList.length ? `📅 明天（${fmtDay(tomorrowList[0].start_time)}）有哪些待参加的重点会议？` : '📅 本周还有哪些待开始的重点会议？',
+          archived ? `📊 总结《${archived.title}》纪要中的关键决议与预算分配？` : '📊 总结最近会议纪要中的关键决议与预算分配？',
+        ]
+      }, [meetings])
+
+      const scopeOptions = [
+        { value: 'all', label: t.scopeAll(meetings.length) },
+        ...meetings.map((m) => ({ value: `meeting:${m.id}`, label: t.scopeMeeting + m.title })),
+      ]
+
+      const modelValue = model ? `${model.provider}||${model.model}` : ''
+
+      // 模型选择器：ready → optgroup 分组（首项「跟随系统默认」value=''，default 项 label 加后缀）；
+      // fail → 禁用只显示「模型列表不可用」并提供重试；loading → 禁用显示加载中
+      function renderModelSelector(){return h('span',{className:'mt-muted'},'汇文大模型 · 本地受限问答 · 无工具')}
+
+      return h('div', {
+        className: 'mt-askwrap',
+        ref: askWrapRef035,
+        style: { height: askH, '--mt-qa-available': autoH035 + 'px' },
+        onDragEnter,
+        onDragOver,
+        onDragLeave,
+        onDrop,
+      },
+        dragOver ? h('div', { className: 'mt-dropoverlay', 'aria-hidden': true }, t.dropHint) : null,
+        unseen035 ? h('button', { className:'mt-btn small', onClick:()=>{followRef035.current=true;setUnseen035(false);if(scrollRef.current)scrollRef.current.scrollTop=scrollRef.current.scrollHeight} }, '回到底部') : null,
+        // 顶部工具栏：左上角 = 检索范围（全量会议资产 / 仅文档 / 指定会议）
+        h('div',{className:'mt-row'},h('label',null,'独立问答历史 ',h('select',{value:activeId,disabled:busy||historyBusy,onChange:event=>{const row=localHistory.find(value=>value.session_id===event.target.value);if(row)void pickSession(row)}},h('option',{value:''},'选择已保存对话'),localHistory.map(row=>h('option',{key:row.session_id,value:row.session_id},row.title)))),h('button',{disabled:busy||historyBusy,onClick:()=>refreshRestrictedHistory()},'刷新历史'),historyNext!==null?h('button',{disabled:busy||historyBusy,onClick:()=>refreshRestrictedHistory(historyNext)},'更多历史'):null),
+        historyError?h('div',{role:'alert'},historyError):null,
+        h('div', { className: 'mt-asktop' },
+          h('select', { className: 'mt-select', value: scope, disabled: busy, 'aria-label': t.askTitle, onChange: (e) => { historyEpoch.current++;historyBusyRef.current=false;setHistoryBusy(false);changeActive('');messagesRef.current=[];setMessages([]);setStream(null);setSource(null);setScope(e.target.value) } },
+            scopeOptions.map((o) => h('option', { key: o.value, value: o.value }, o.label)),
+          ),
+          h('span', { className: 'mt-muted mt-grow' }, '基于所选会议资产范围回答，不限正式归档。', scope === 'docs' ? ' 当前范围：会议材料。' : ' 范围内会议：' + (meetingsKnown ? scope === 'all' ? meetings.length : meetings.filter(item => 'meeting:' + item.id === scope).length : '未知') + '。'),
+          h('button', { className: 'mt-btn small', disabled: busy, onClick: () => { historyEpoch.current++; historyBusyRef.current=false; setHistoryBusy(false); answerRef.current=''; pendingDelta.current=''; changeActive(''); messagesRef.current=[]; setMessages([]); setStream(null); setInput(''); setFiles([]); setSource(null); showToast('已开始新会话，原历史记录保留。', 'info') } }, '清空 / 新会话'),
+        ),
+        h('div', { className: 'mt-askbody' },
+          // 对话面板（占满全宽；.mt-msgs flex:1 → 消息区随对话框高度伸缩）
+          h('div', { className: 'mt-askpanel' },
+            h('div', { className: 'mt-msgs', ref: scrollRef, onScroll: event => { const el=event.currentTarget; followRef035.current=el.scrollHeight-el.clientHeight-el.scrollTop<48; if(followRef035.current)setUnseen035(false) } },
+              messages.length === 0 && !busy
+                ? h('div', { className: 'mt-welcome' },
+                    h('div', { style: { fontSize: 26 } }, '🤖'),
+                    h('div', { style: { fontWeight: 750, marginTop: 6, fontSize: 15 } }, t.welcomeTitle),
+                    h('div', { className: 'mt-muted', style: { marginTop: 4 } }, t.welcomeSub),
+                    h('div', { style: { marginTop: 12, display: 'flex', flexWrap: 'wrap', justifyContent: 'center' } },
+                      presets.map((q) => h('button', { key: q, className: 'q', onClick: () => send(q) }, q)),
+                    ),
+                  )
+                : null,
+              messages.map((msg, i) =>
+                h(QaMessage035, { role: msg.role, key: i, ts: msg.created_at || msg.ts },
+                  msg.role === 'assistant'
+                    ? h('div', null,
+                        renderCitations(msg.content, [], () => {}),
+                        msg.error ? h('div', { className: 'mt-errmsg' }, '⚠️ ', msg.error) : null,
+                        (msg.sources || []).length
+                          ? h('div', { className: 'mt-msgsrc' },
+                              h('span', { className: 'mt-muted' }, t.citations),
+                              msg.sources.map((s) =>
+                                h('button', { key: s.id || s.index, className: 'mt-linkchip', onClick: async()=>{if(!msg.qaTurnId)return;const turn=msg.qaTurnId,session=activeIdRef.current,scope=msg.queryScope||'all';try{const query='?qaTurnId='+encodeURIComponent(turn)+(scope.startsWith('meeting:')?'&meetingId='+encodeURIComponent(scope.slice(8)):'');const verified=await request('/restricted-sources/'+encodeURIComponent(s.id)+'/resolve'+query);if(activeIdRef.current===session)setSource({...verified,label:verified.title,text:verified.quote})}catch(error){showToast('来源已失效或未能复核：'+error.message,'error')}} },
+                                  `${t.quote} ${s.index}: ${s.meeting_title || s.label || s.id}`,
+                                ),
+                              ),
+                            )
+                          : msg.sources
+                            ? h('div', { className: 'mt-msgsrc' }, h('span', { className: 'mt-muted' }, t.noCitations))
+                            : null,
+                        h('div', { className: 'mt-row', style: { marginTop: 6 } },
+                          h('button', { className: 'mt-btn ghost small', onClick: () => navigator.clipboard.writeText(msg.content).catch(() => {}) }, t.copyAnswer),
+                        ),
+                      )
+                    : [msg.content,
+                        Array.isArray(msg.files) && msg.files.length
+                          ? h('div', { className: 'mt-row', style: { marginTop: 6, justifyContent: 'flex-end' } },
+                              msg.files.map((f, j) => h('span', { key: j, className: 'mt-attach' }, '📄 ', f.name)))
+                          : null],
+                ),
+              ),
+              // 流式接收中的 ai 气泡：状态行 / 思考 / 工具调用状态行 / 逐帧文本
+              busy && stream
+                ? h(QaMessage035, { role: 'assistant', key: 'streaming', ts: stream.startedAt },
+                    stream.status ? h('div', { className: 'mt-streamstatus' }, h('span', { className: 'mt-spin', 'aria-hidden': true }), ' ', stream.status) : null,
+                    stream.think ? h('div', { className: 'mt-streamthink' }, stream.think) : null,
+                    stream.tool ? h('div', { className: 'mt-toolrow' }, '🔧 ', t.toolCalling(stream.tool)) : null,
+                    stream.text ? h('div', null, renderCitations(stream.text, [], () => {})) : null,
+                  )
+                : null,
+            ),
+            // 附件 chips 区（输入栏上方：文件名 + 大小 + ✕ 移除；上传中显示进度态）
+            files.length || uploading
+              ? h('div', { className: 'mt-attachrow' },
+                  files.map((f) =>
+                    h('span', { key: f.key, className: 'mt-attach' + (f.pending ? ' uploading' : ''), title: f.path || f.name },
+                      h('span', { className: 'nm' }, '📄 ', f.name),
+                      h('span', { className: 'mt-muted' }, fmtBytes(f.size)),
+                      f.pending ? h('span', { className: 'mt-spin', 'aria-hidden': true }) : null,
+                      h('button', { className: 'rm', title: t.attRemove, 'aria-label': t.attRemove, onClick: () => removeFile(f.key) }, '✕'),
+                    ),
+                  ),
+                  uploading ? h('span', { className: 'mt-muted' }, t.attUploading) : null,
+                )
+              : null,
+            // 底部停靠区（sticky 吸底常驻）：输入框上侧一行 =「➕ 新建会议」提示标签 + 模型选择
+            h('div', { className: 'mt-askdock' + (dockH035 !== null ? ' mt-askdock-fixed' : ''), ref: dockRef035, style: dockH035 !== null ? { height: dockH035 + 'px' } : null },
+              // kbcAsk-20261005：把手贴卡片上沿，向上拖 = 输入区变高；双击恢复自适应
+              h('div', {
+                className: 'mt-resizer',
+                role: 'separator', tabIndex: 0,
+                'aria-valuemin': 120, 'aria-valuemax': 1200,
+                'aria-valuenow': dockH035 !== null ? Math.round(dockH035) : undefined,
+                'aria-orientation': 'horizontal',
+                'aria-label': t.resizeHint,
+                title: t.resizeHint,
+                onKeyDown: event => {
+                  if (!['ArrowUp', 'ArrowDown', 'Home'].includes(event.key)) return
+                  event.preventDefault()
+                  if (event.key === 'Home') { setDockH035(null); return }
+                  const base = dockH035 !== null ? dockH035 : (dockRef035.current ? Math.round(dockRef035.current.getBoundingClientRect().height) : 140)
+                  setDockH035(Math.max(120, Math.min(dockMax035(), base + (event.key === 'ArrowUp' ? 40 : -40))))
+                },
+                onDoubleClick: () => setDockH035(null),
+                onMouseDown: (e) => { if (startResizeRef.current) startResizeRef.current(e) },
+              }, h('span', { className: 'grip', 'aria-hidden': true })),
+              h('div', { className: 'mt-asksub' },
+                h('button', { className: 'mt-hintchip new', title: t.newMeeting, onClick: insertMeetingTemplate }, '➕ ', t.newMeeting),
+                h('span', { style: { flex: 1 } }),
+                h('span', { className: 'mt-kbc-hint' }, t.enterHint),
+              ),
+                            kbcMention
+                ? h('div', { className: 'mt-kbc-menu', role: 'listbox', 'aria-label': '引用会议' },
+                    h('div', { className: 'mt-kbc-menuhead' }, '引用会议：选定后检索范围锁定到该会议'),
+                    meetings.length
+                      ? meetings.slice(0, 20).map((m) => h('button', {
+                          key: 'kbc-' + m.id, type: 'button',
+                          className: 'mt-kbc-menuitem' + (scope === 'meeting:' + m.id ? ' on' : ''),
+                          onClick: () => { setScope('meeting:' + m.id); setKbcMention(false) },
+                        }, '@' + (m.title || '未命名会议')))
+                      : h('div', { className: 'mt-kbc-menuempty' }, '暂无可引用的会议'),
+                    h('button', {
+                      type: 'button', className: 'mt-kbc-menuitem' + (scope === 'all' ? ' on' : ''),
+                      onClick: () => { setScope('all'); setKbcMention(false) },
+                    }, '不限会议（全部资产）'),
+                  )
+                : null,
+h('div', { className: 'mt-inputbar' },
+              // 📎 附件按钮（隐藏 file input 多选 + accept 白名单）
+              h('button', {
+                className: 'mt-clipbtn mt-kbc-icon', disabled: true, title: t.attachTip, 'aria-label': t.attachBtn,
+                onClick: () => fileRef.current && fileRef.current.click(),
+              }, uploading > 0 ? h('span', { className: 'mt-spin', 'aria-hidden': true }) : '+'),
+              h('button', {
+                type: 'button', className: 'mt-kbc-icon mt-kbc-at',
+                title: '引用会议（限定检索范围）', 'aria-label': '引用会议',
+                'aria-expanded': kbcMention ? 'true' : 'false',
+                onClick: () => setKbcMention((v) => !v),
+              }, '@'),
+              h('textarea', {
+                ref: inputRef, value: input, disabled: busy, placeholder: t.inputPlaceholder,
+                onChange: (e) => setInput(e.target.value),
+                onKeyDown: (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } },
+              }),
+              h('span', { className: 'mt-kbc-spacer' }),
+              h('span', { className: 'mt-kbc-model' }, renderModelSelector()),
+              busy
+                ? h('button', { className: 'mt-btn stop', onClick: stopStream }, '■ ', t.stopBtn)
+                : h('button', { className: 'mt-btn primary', disabled: !input.trim() || uploading > 0, onClick: () => send(), title: t.sendBtn, 'aria-label': t.sendBtn }, h('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2.2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true' }, h('path', { d: 'M12 19V5' }), h('path', { d: 'M5 12l7-7 7 7' }))),
+            ),
+            ),
+            h('input', {
+              ref: fileRef, type: 'file', multiple: true, accept: '.pdf,.docx,.xlsx,.txt,.md',
+              style: { display: 'none' },
+              onChange: (e) => { const fl = e.target.files; const picked = fl ? Array.prototype.slice.call(fl) : []; /* kbcFix-20261005 */ e.target.value = ''; if (picked.length) void handleFiles(picked) },
+            }),
+          ),
+        ),
+        source
+          ? h(Modal, { title: t.srcTitle, narrow: true, onClose: () => setSource(null) },
+              h('div', { className: 'mt-stack' },
+                h('div', null, h('div', { className: 'mt-muted' }, t.srcSource), h('strong', null, source.meeting_title || source.label || source.id)),
+                source.timestamp ? h('div', null, h('div', { className: 'mt-muted' }, t.srcStamp), h('span', { className: 'mt-chip' }, source.timestamp)) : null,
+                h('div', null,
+                  h('div', { className: 'mt-muted' }, t.srcText),
+                  h('div', { style: { background: 'var(--dsw-alias-state-warn-tertiary)', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 8, padding: '9px 11px', fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 12, whiteSpace: 'pre-wrap' } }, source.text || t.none),
+                ),
+                h('div', { className: 'mt-row', style: { justifyContent: 'flex-end' } },
+                  h('button', { className: 'mt-btn primary', onClick: () => setSource(null) }, t.close),
+                ),
+              ),
+            )
+          : null,
+      )
+    }
+
+
+    /* ---- mtBg-20261005：后台问答续跑（客户端侧） ----
+     * main 槽是 keyed 槽：切到别的页面会卸载本组件，busy/messages/stream/activeId 全部丢失。
+     * 这里把「活动问答会话 id」落 sessionStorage 并在挂载时回读会话行：
+     *   - 行内已有回答 → 直接渲染（多轮上下文继续可用）；
+     *   - 该会话服务端仍在生成（GET /qa-sessions/:id 返回 busy）→ 显示「生成中」并轮询，
+     *     回合结束后自动铺上完整回答（无需手动刷新或切会话）。
+     * 「停止」保持有效：显式停止经 POST /qa-sessions/:id/abort 触达服务端（断流不再等于中止）。
+     */
+    const QA_ACTIVE_KEY = 'meetai.qa.activeSession.v1'
+    const QA_PENDING_KEY = 'meetai.qa.pendingQuestion.v1'
+
+    function AskView({ t, meetings, showToast, seed, refreshMeetings, sessions, refreshSessions, onActiveSession, onNewChat, meetingsKnown }) {
+      // 会话列表由 MeetingApp 持有（rail「历史对话」标签下展示），此处只读 + 通过 ref 供 seed.loadSession 查找
+      const sessionsRef = useRef([])
+      // mtBg-20261005：切页面会卸载本组件 —— 活动会话 id 从 sessionStorage 恢复。
+      const [activeId, setActiveId] = useState(() => { try { return window.sessionStorage.getItem(QA_ACTIVE_KEY) || '' } catch { return '' } })
+      const [scope, setScope] = useState('all')
+      const [messages, setMessages] = useState([])
+      const [input, setInput] = useState('')
+      const [busy, setBusy] = useState(false)
+      // mtBg-20261005：服务端仍有回合在跑（本组件未持有该 SSE 流，例如切页面回来后）→ 「生成中」+ 轮询回读。
+      const [bgRun, setBgRun] = useState(false)
+      const [bgNote, setBgNote] = useState('')
+      const bootQaRef = useRef(activeId) // 挂载时的活动会话 id（sessionStorage 恢复值）
+      const bgSeqRef = useRef(0)
+      const bgAliveRef = useRef(true)
+      const bgTimerRef = useRef(0)
+      const [source, setSource] = useState(null)
+      // 流式应答态：stream = { text, status, think, tool }（busy 期间渲染接收中的 ai 气泡）
+      const [stream, setStream] = useState(null)
+      // 附件待发列表（{key,name,size,path?,pending}）；uploading 为在传数量；dragOver 控制拖拽高亮
+      const [files, setFiles] = useState([])
+      const [uploading, setUploading] = useState(0)
+      const [dragOver, setDragOver] = useState(false)
+      // @ 引用会议菜单（kbComposer-20261005）：选择后直接复用既有 scope 机制限定检索范围
+      const [kbcMention, setKbcMention] = useState(false)
+      // 模型目录（GET /models）：state idle|loading|ready|fail；model 为 null = 跟随系统默认
+      const [models, setModels] = useState({ state: 'idle', groups: [], def: null })
+      const [model, setModel] = useState(null)
+      const scrollRef = useRef(null)
+      const inputRef = useRef(null)
+      const fileRef = useRef(null)
+      const seedSeen = useRef(0)
+      const fileSeq = useRef(0)
+      const dragDepth = useRef(0) // 嵌套 dragenter/leave 计数，避免子元素闪烁
+      const abortRef = useRef(null) // 流式请求中止控制器（「■ 停止」按钮）
+      const answerRef = useRef('') // 本轮回答的权威累积文本（turn_end 收尾用它，避免 rAF 批次滞后）
+      const pendingDelta = useRef('') // rAF 未刷新的 delta 缓冲
+      const rafRef = useRef(0)
+      const [autoH035, setAutoH035] = useState(520)
+      const askWrapRef035 = useRef(null), followRef035 = useRef(true)
+      const [unseen035, setUnseen035] = useState(false)
+      // kbcAsk-20261005：对话区恒为可用高度；输入卡片高度单独记（null = 随内容自适应）
+      const [dockH035, setDockH035] = useState(() => readDockHeight035(window.localStorage))
+      const dockRef035 = useRef(null)
+      const askH = autoH035
+      const askHRef = useRef(askH), resizeRef = useRef(null), startResizeRef = useRef(null)
+      const dockMax035 = () => Math.max(160, (askHRef.current || autoH035) - 150)
+      const messagesRef = useRef([]), activeIdRef = useRef(''), filesRef = useRef([]), modelRef = useRef(null)
+      useEffect(() => { messagesRef.current = messages }, [messages])
+      // mtBg-20261005：活动会话 id 持久化（同一标签页内切页面/刷新都保留）。
+      useEffect(() => {
+        activeIdRef.current = activeId
+        try {
+          if (activeId) window.sessionStorage.setItem(QA_ACTIVE_KEY, activeId)
+          else window.sessionStorage.removeItem(QA_ACTIVE_KEY)
+        } catch { /* 隐私模式或禁用 sessionStorage：退化为原行为 */ }
+      }, [activeId])
+
+      /* ---- mtBg-20261005：后台回合回读 ----
+       * 挂载时回读会话行：busy=false → 直接铺消息；busy=true → 「生成中」并每 2.5s 轮询，
+       * 服务端回合结束后自动铺上完整回答。 */
+      function stopBgWatch() {
+        bgSeqRef.current += 1
+        if (bgTimerRef.current) { try { window.clearTimeout(bgTimerRef.current) } catch { /* ignore */ } bgTimerRef.current = 0 }
+        if (bgAliveRef.current) setBgRun(false)
+      }
+      async function readSessionRow(id) {
+        const d = await request(`/qa-sessions/${encodeURIComponent(id)}`)
+        return { row: d && d.session ? d.session : null, busy: Boolean(d && d.busy) }
+      }
+      function applyRow(row) {
+        const msgs = Array.isArray(row && row.messages) ? row.messages : []
+        messagesRef.current = msgs
+        setMessages(msgs)
+        if (row && row.scope) setScope(row.scope)
+      }
+      async function watchBackgroundTurn(id) {
+        const seq = ++bgSeqRef.current
+        const deadline = Date.now() + 12 * 60 * 1000
+        let sawBusy = false
+        setBgNote('')
+        for (;;) {
+          if (!bgAliveRef.current || bgSeqRef.current !== seq) return
+          let d = null
+          try { d = await readSessionRow(id) } catch { d = null }
+          if (!bgAliveRef.current || bgSeqRef.current !== seq) return
+          if (!d || !d.row) { setBgRun(false); return }
+          if (!d.busy) {
+            applyRow(d.row)
+            setBgRun(false)
+            bgTimerRef.current = 0
+            // 后台失败（模型报错/超时）不会落库：给出可解释提示，而不是静默只剩提问。
+            if (sawBusy && !(Array.isArray(d.row.messages) && d.row.messages.some(m => m && m.role === 'assistant'))) {
+              setBgNote('上一回合未完成（服务端未保存），可重新提问。')
+            }
+            try { window.sessionStorage.removeItem(QA_PENDING_KEY) } catch { /* ignore */ }
+            refreshSessions()
+            return
+          }
+          sawBusy = true
+          setBgRun(true)
+          if (Date.now() > deadline) {
+            setBgRun(false)
+            bgTimerRef.current = 0
+            setBgNote('后台回合超过 12 分钟未结束，已停止轮询；可稍后从「历史对话」重开该会话。')
+            return
+          }
+          await new Promise(r => { bgTimerRef.current = window.setTimeout(r, 2500) })
+        }
+      }
+      // 挂载即恢复：优先用 sessionStorage 的活动会话 id；没有则用「提问后立刻切走」的遗留标记找回会话行
+      useEffect(() => {
+        bgAliveRef.current = true
+        const boot = bootQaRef.current
+        let cancelled = false
+        ;(async () => {
+          if (boot) {
+            let d = null
+            try { d = await readSessionRow(boot) } catch { d = null }
+            if (cancelled || !bgAliveRef.current) return
+            if (d && d.row) applyRow(d.row)
+            if (d && d.busy) { void watchBackgroundTurn(boot); return }
+            try { window.sessionStorage.removeItem(QA_PENDING_KEY) } catch { /* ignore */ }
+            return
+          }
+          let pend = null
+          try { pend = JSON.parse(window.sessionStorage.getItem(QA_PENDING_KEY) || 'null') } catch { pend = null }
+          const fresh = pend && pend.q && Number.isFinite(pend.at) && Date.now() - pend.at < 20 * 60 * 1000
+          if (!fresh) { try { window.sessionStorage.removeItem(QA_PENDING_KEY) } catch { /* ignore */ } return }
+          let found = null
+          try {
+            const data = await request('/qa-sessions')
+            const list = Array.isArray(data && data.sessions) ? data.sessions : []
+            found = list.find(s => s && s.session_id === pend.id) ||
+              list.find(s => s && typeof s.title === 'string' && s.title === pend.q) || null
+          } catch { found = null }
+          if (cancelled || !bgAliveRef.current || !found) return
+          changeActive(found.session_id)
+          applyRow(found)
+          if (found.busy) void watchBackgroundTurn(found.session_id)
+          else { try { window.sessionStorage.removeItem(QA_PENDING_KEY) } catch { /* ignore */ } }
+        })()
+        return () => { cancelled = true; bgAliveRef.current = false; stopBgWatch() }
+      }, [])
+      useEffect(() => { filesRef.current = files }, [files])
+      useEffect(() => { modelRef.current = model }, [model])
+      useEffect(() => { sessionsRef.current = Array.isArray(sessions) ? sessions : [] }, [sessions])
+      useEffect(() => { askHRef.current = askH }, [askH])
+      useEffect(() => {
+        try {
+          if (dockH035 === null) window.localStorage.removeItem('meetai.askDockH.v1')
+          else window.localStorage.setItem('meetai.askDockH.v1', String(Math.round(dockH035)))
+        } catch { /* ignore */ }
+      }, [dockH035])
+      useEffect(() => {
+        const root = askWrapRef035.current; if (!root) return
+        const stage = root.closest('.mt-stage'), viewport = window.visualViewport
+        const box = root.parentElement
+        const measure = () => {
+          if (!root.isConnected || !root.getClientRects().length) return
+          const top = root.getBoundingClientRect().top
+          const viewBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight
+          const stageBottom = stage?.getBoundingClientRect().bottom || viewBottom
+          // kbcAsk-20261005：真正带底部内边距的滚动容器是 .mt-body（.mt-stage 的 padding 恒为 0）。
+          // 原先按 .mt-stage 算 → 面板比容器高 14px、出现滚动条 → 「输入框底边不在底部」。
+          const padBottom = box ? parseFloat(window.getComputedStyle(box).paddingBottom) || 0 : 0
+          const boxBottom = box ? box.getBoundingClientRect().bottom - padBottom : Infinity
+          const avail = qaAvailable035(top, Math.min(viewBottom, stageBottom, boxBottom) - 1, 0)
+          setAutoH035(avail)
+          setDockH035(prev => (prev === null ? prev : Math.min(prev, Math.max(160, avail - 150))))
+        }
+        measure(); window.addEventListener('resize', measure); viewport?.addEventListener('resize', measure); viewport?.addEventListener('scroll', measure)
+        const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null
+        if (stage) observer?.observe(stage); if (root.parentElement) observer?.observe(root.parentElement)
+        return () => { observer?.disconnect(); window.removeEventListener('resize', measure); viewport?.removeEventListener('resize', measure); viewport?.removeEventListener('scroll', measure) }
+      }, [])
+      useEffect(() => {
+        const remove = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', end); window.removeEventListener('blur', end) }
+        // kbcAsk-20261005：把手在卡片上沿，向上拖 = 变高（下沿固定贴底）
+        const move = event => {
+          const info = resizeRef.current; if (!info) return
+          const next = Math.max(120, Math.min(dockMax035(), Math.round(info.height + (info.y - event.clientY))))
+          setDockH035(next)
+        }
+        const end = () => { resizeRef.current?.root?.removeAttribute('data-mt-resizing'); resizeRef.current=null; remove() }
+        startResizeRef.current = event => {
+          event.preventDefault(); if (resizeRef.current) return
+          const root = event.currentTarget.closest('.mt-app')
+          const dock = dockRef035.current
+          const rect = dock ? dock.getBoundingClientRect() : null
+          resizeRef.current = { y: event.clientY, height: rect && rect.height > 0 ? Math.round(rect.height) : 140, root }
+          root?.setAttribute('data-mt-resizing','1')
+          window.addEventListener('mousemove', move); window.addEventListener('mouseup', end); window.addEventListener('blur', end)
+        }
+        return () => { end(); startResizeRef.current = null }
+      }, [])
+      // kbcAsk-20261005：输入框随内容自适应加高（KB 插件同款：按 scrollHeight 回写内联高度，上限 200px）。
+      // 固定高度模式下 textarea 撑满卡片；内容比卡片还高时把卡片一并抬高。
+      useEffect(() => {
+        const el = inputRef.current; if (!el) return
+        if (dockH035 !== null) {
+          el.style.height = ''
+          const deficit = el.scrollHeight - el.clientHeight
+          if (deficit > 1) setDockH035(prev => (prev === null ? prev : Math.min(prev + deficit, dockMax035())))
+          return
+        }
+        el.style.height = 'auto'
+        el.style.height = Math.max(52, Math.min(el.scrollHeight, 200)) + 'px'
+      }, [input, dockH035])
+
+      // 卸载清理：中止本组件持有的读流与未刷新的 rAF 批处理；同时停掉后台轮询。
+      // mtBg-20261005：这里 abort 掉的只是「本组件读流」，服务端回合继续跑完并落库（本次修复的核心）。
+      useEffect(() => () => {
+        bgAliveRef.current = false
+        bgSeqRef.current += 1
+        if (bgTimerRef.current) { try { window.clearTimeout(bgTimerRef.current) } catch { /* ignore */ } bgTimerRef.current = 0 }
         try { if (abortRef.current) abortRef.current.abort() } catch { /* ignore */ }
         try { if (rafRef.current && window.cancelAnimationFrame) window.cancelAnimationFrame(rafRef.current) } catch { /* ignore */ }
       }, [])
@@ -1907,9 +3551,10 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
 
       useEffect(() => {
         const el = scrollRef.current
-        if (el) el.scrollTop = el.scrollHeight
+        if (el && followRef035.current) { el.scrollTop = el.scrollHeight; setUnseen035(false) } else if (el) setUnseen035(true)
       }, [messages, busy, stream])
 
+      useEffect(() => { followRef035.current = true; setUnseen035(false); if(scrollRef.current)scrollRef.current.scrollTop=scrollRef.current.scrollHeight }, [activeId])
       // 打开会话：rail「历史对话」点击（经 seed.loadSession）或列表项触发
       async function pickSession(s) {
         if (busy) return // 流式接收中禁止切换会话
@@ -1996,13 +3641,51 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
         dragDepth.current = Math.max(0, dragDepth.current - 1)
         if (dragDepth.current === 0) setDragOver(false)
       }
+      // kbComposer-20261005：拖拽支持文件夹 —— 用 webkitGetAsEntry 递归收集，readEntries 必须循环取到空。
+      // 取不到条目（非 Chromium / 权限受限）时回退 dataTransfer.files，行为与改前一致。
+      async function kbcCollectEntry(entry, out) {
+        if (!entry) return
+        if (entry.isFile) {
+          await new Promise((resolve) => {
+            try { entry.file((f) => { if (f) out.push(f); resolve() }, () => resolve()) } catch { resolve() }
+          })
+          return
+        }
+        if (!entry.isDirectory) return
+        const reader = entry.createReader()
+        for (;;) {
+          const batch = await new Promise((resolve) => {
+            try { reader.readEntries((rows) => resolve(Array.prototype.slice.call(rows || [])), () => resolve([])) } catch { resolve([]) }
+          })
+          if (!batch.length) return
+          for (const kid of batch) await kbcCollectEntry(kid, out)
+        }
+      }
       const onDrop = (e) => {
         if (!hasFilesInDT(e)) return
         e.preventDefault()
         dragDepth.current = 0
         setDragOver(false)
-        const fl = e.dataTransfer ? e.dataTransfer.files : null
-        if (fl && fl.length) void handleFiles(fl)
+        const dt = e.dataTransfer
+        const entries = []
+        if (dt && dt.items) {
+          const items = Array.prototype.slice.call(dt.items)
+          for (const item of items) {
+            try { const entry = item.webkitGetAsEntry && item.webkitGetAsEntry(); if (entry) entries.push(entry) } catch { /* ignore */ }
+          }
+        }
+        if (!entries.length) {
+          const fl = dt ? dt.files : null
+          if (fl && fl.length) void handleFiles(fl)
+          return
+        }
+        // 注意：items 在 await 之后失效，条目必须同步取完再异步递归
+        void (async () => {
+          const out = []
+          for (const entry of entries) await kbcCollectEntry(entry, out)
+          if (out.length) await handleFiles(out)
+          else showToast('没有可用文件（文件夹为空或类型不支持）。', 'warn')
+        })()
       }
 
       // delta 增量 rAF 批量刷新：先入缓冲，每帧一次性并入气泡文本，降低 setState 频率
@@ -2027,9 +3710,11 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
        * busy 时输入框禁用、「发送」变「■ 停止」（AbortController abort）。 —— */
 
       async function send(questionText, scopeOverride) {
-        if (busy) return
+        if (busy || bgRun) return // mtBg-20261005：后台回合在跑时不允许并发提问（服务端会 409）
         const question = String(questionText !== undefined ? questionText : input || '').trim()
         if (!question) return
+        stopBgWatch() // mtBg-20261005：新提问接管，旧的后台轮询立即失效（后台回合中 send 已被 busy||bgRun 拦住）
+        setBgNote('')
         const useScope = scopeOverride || scope
         const attach = filesRef.current.filter((f) => !f.pending).map((f) => ({ name: f.name, path: f.path }))
         const userMsg = { role: 'user', content: question, created_at: new Date().toISOString() }
@@ -2039,8 +3724,11 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
         setInput('')
         answerRef.current = ''
         pendingDelta.current = ''
-        setStream({ text: '', status: t.thinking, think: '', tool: '' })
+        setStream({ text: '', status: t.thinking, think: '', tool: '', startedAt: Date.now() })
         setBusy(true)
+        // mtBg-20261005：记录「已提问」标记（q = 服务端会话行标题前缀）。万一在收到 status 帧
+        // （拿到会话 id）之前就切走，回到页面还能靠它在会话列表里找回该行并接管轮询。
+        try { window.sessionStorage.setItem(QA_PENDING_KEY, JSON.stringify({ id: activeIdRef.current || '', q: question.slice(0, 40), at: Date.now() })) } catch { /* ignore */ }
         const body = { question, scope: useScope, files: attach }
         if (activeIdRef.current) body.sessionId = activeIdRef.current
         const cur = modelRef.current
@@ -2051,6 +3739,7 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
         const ctrl = new AbortController()
         abortRef.current = ctrl
         let errText = ''
+        let completed = false // only the server's persisted turn_end confirms completion
         try {
           const resp = await fetch(API + '/qa', {
             method: 'POST',
@@ -2100,6 +3789,7 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
                   setStream((s) => (s ? { ...s, tool: String(ev.name) } : s))
                 } else if (ev.type === 'turn_end') {
                   // 服务端已把本轮消息落盘；客户端收尾后刷新会话列表与日程/统计
+                  completed = true
                   if (ev.sessionId) changeActive(ev.sessionId)
                   closed = true
                   break
@@ -2123,8 +3813,11 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
           }
           rafRef.current = 0
           pendingDelta.current = ''
-          // 本轮收尾：turn_end → 正常落一条 assistant 消息；error/网络错误 → 气泡内带错误并 toast；
-          // 用户主动停止 → 保留已收到的部分文本（若有）
+          // Only turn_end confirms a persisted turn. Keep partial text on error/stop/EOF, never silently call it saved.
+          if (!completed) {
+            const reason = errText || (ctrl.signal.aborted ? '已停止接收' : '连接已结束，但未收到完成确认')
+            errText = `${reason}；本回合未保存（未收到服务端完成确认）。`
+          }
           const text = answerRef.current
           let extra = null
           if (errText) extra = { role: 'assistant', content: text, error: errText, created_at: new Date().toISOString() }
@@ -2136,15 +3829,25 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
           }
           setStream(null)
           setBusy(false)
-          refreshSessions()
-          if (!errText && typeof refreshMeetings === 'function') {
-            try { refreshMeetings() } catch { /* ignore */ }
+          // mtBg-20261005：组件已卸载（用户切页面）时不再做 UI 副作用，也不清 pendingQuestion 标记 ——
+          // 服务端会继续跑完并落库，由挂载时的回读/轮询接管；否则会在别的页面弹出「问答失败」。
+          if (bgAliveRef.current) {
+            try { window.sessionStorage.removeItem(QA_PENDING_KEY) } catch { /* ignore */ }
+            refreshSessions()
+            if (completed && !errText && typeof refreshMeetings === 'function') {
+              try { refreshMeetings() } catch { /* ignore */ }
+            }
           }
         }
-        if (errText) showToast(`${t.askFailed}: ${errText}`, 'error')
+        if (errText && bgAliveRef.current) showToast(`${t.askFailed}: ${errText}`, 'error')
       }
 
       function stopStream() {
+        // mtBg-20261005：「停止」必须仍然真的停下服务端回合 —— 断流本身已不再中止回合，
+        // 因此补一条显式通道 POST /qa-sessions/:id/abort（best-effort；失败不阻塞本地中止）。
+        // 覆盖两种情形：本组件正在读流（busy）与切页面回来后接管的后台回合（bgRun）。
+        const id = activeIdRef.current
+        if (id) { try { request(`/qa-sessions/${encodeURIComponent(id)}/abort`, { method: 'POST' }).catch(() => {}) } catch { /* ignore */ } }
         try { if (abortRef.current) abortRef.current.abort() } catch { /* ignore */ }
       }
 
@@ -2183,7 +3886,7 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
           return h('select', {
             className: 'mt-select', value: modelValue, disabled: busy,
             title: t.modelLabel, 'aria-label': t.modelLabel,
-            style: { maxWidth: 280 },
+            style: { maxWidth: 210 },
             onChange: (e) => {
               const v = String(e.target.value || '')
               const sep = v.indexOf('||')
@@ -2212,24 +3915,29 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
 
       return h('div', {
         className: 'mt-askwrap',
-        style: { height: askH },
+        ref: askWrapRef035,
+        style: { height: askH, '--mt-qa-available': autoH035 + 'px' },
         onDragEnter,
         onDragOver,
         onDragLeave,
         onDrop,
       },
-        dragOver ? h('div', { className: 'mt-dropoverlay', 'aria-hidden': true }, '📥 ', t.dropHint) : null,
+        dragOver ? h('div', { className: 'mt-dropoverlay', 'aria-hidden': true }, t.dropHint) : null,
+        unseen035 ? h('button', { className:'mt-btn small', onClick:()=>{followRef035.current=true;setUnseen035(false);if(scrollRef.current)scrollRef.current.scrollTop=scrollRef.current.scrollHeight} }, '回到底部') : null,
         // 顶部工具栏：左上角 = 检索范围（全量会议资产 / 仅文档 / 指定会议）
+        h('details',{className:'mt-card'},h('summary',null,'新增：本地受限会议问答（原问答功能保留）'),h(RestrictedAskView,{t,meetings,showToast,seed:null,refreshMeetings,sessions:[],refreshSessions,onActiveSession:()=>{},onNewChat:()=>{},meetingsKnown})),
         h('div', { className: 'mt-asktop' },
-          h('select', { className: 'mt-select', value: scope, 'aria-label': t.askTitle, onChange: (e) => setScope(e.target.value) },
+          h('select', { className: 'mt-select', value: scope, disabled: busy, 'aria-label': t.askTitle, onChange: (e) => setScope(e.target.value) },
             scopeOptions.map((o) => h('option', { key: o.value, value: o.value }, o.label)),
           ),
+          h('span', { className: 'mt-muted mt-grow' }, '基于所选会议资产范围回答，不限正式归档。', scope === 'docs' ? ' 当前范围：会议材料。' : ' 范围内会议：' + (meetingsKnown ? scope === 'all' ? meetings.length : meetings.filter(item => 'meeting:' + item.id === scope).length : '未知') + '。'),
+          h('button', { className: 'mt-btn small', disabled: busy, onClick: () => { onNewChat(); showToast('已开始新会话，原历史记录保留。', 'info') } }, '清空 / 新会话'),
         ),
         h('div', { className: 'mt-askbody' },
           // 对话面板（占满全宽；.mt-msgs flex:1 → 消息区随对话框高度伸缩）
           h('div', { className: 'mt-askpanel' },
-            h('div', { className: 'mt-msgs', ref: scrollRef },
-              messages.length === 0 && !busy
+            h('div', { className: 'mt-msgs', ref: scrollRef, onScroll: event => { const el=event.currentTarget; followRef035.current=el.scrollHeight-el.clientHeight-el.scrollTop<48; if(followRef035.current)setUnseen035(false) } },
+              messages.length === 0 && !busy && !bgRun
                 ? h('div', { className: 'mt-welcome' },
                     h('div', { style: { fontSize: 26 } }, '🤖'),
                     h('div', { style: { fontWeight: 750, marginTop: 6, fontSize: 15 } }, t.welcomeTitle),
@@ -2240,7 +3948,7 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
                   )
                 : null,
               messages.map((msg, i) =>
-                h('div', { className: `mt-bubble ${msg.role === 'user' ? 'user' : 'ai'}`, key: i },
+                h(QaMessage035, { role: msg.role, key: i, ts: msg.created_at || msg.ts },
                   msg.role === 'assistant'
                     ? h('div', null,
                         renderCitations(msg.content, msg.sources, setSource),
@@ -2270,13 +3978,19 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
               ),
               // 流式接收中的 ai 气泡：状态行 / 思考 / 工具调用状态行 / 逐帧文本
               busy && stream
-                ? h('div', { className: 'mt-bubble ai', key: 'streaming' },
+                ? h(QaMessage035, { role: 'assistant', key: 'streaming', ts: stream.startedAt },
                     stream.status ? h('div', { className: 'mt-streamstatus' }, h('span', { className: 'mt-spin', 'aria-hidden': true }), ' ', stream.status) : null,
                     stream.think ? h('div', { className: 'mt-streamthink' }, stream.think) : null,
                     stream.tool ? h('div', { className: 'mt-toolrow' }, '🔧 ', t.toolCalling(stream.tool)) : null,
                     stream.text ? h('div', null, renderCitations(stream.text, [], () => {})) : null,
                   )
                 : null,
+              // mtBg-20261005：切回页面时该会话仍在服务端生成 → 「生成中」占位（轮询到完成后自动替换为真回答）
+              bgRun
+                ? h(QaMessage035, { role: 'assistant', key: 'bg-running' },
+                    h('div', { className: 'mt-streamstatus' }, h('span', { className: 'mt-spin', 'aria-hidden': true }), ' ', '生成中…（已切到后台运行，完成后自动显示）'),
+                  )
+                : (bgNote ? h(QaMessage035, { role: 'assistant', key: 'bg-note' }, h('div', { className: 'mt-errmsg' }, '⚠️ ', bgNote)) : null),
             ),
             // 附件 chips 区（输入栏上方：文件名 + 大小 + ✕ 移除；上传中显示进度态）
             files.length || uploading
@@ -2293,43 +4007,76 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
                 )
               : null,
             // 底部停靠区（sticky 吸底常驻）：输入框上侧一行 =「➕ 新建会议」提示标签 + 模型选择
-            h('div', { className: 'mt-askdock' },
-              h('div', { className: 'mt-asksub' },
-                h('button', { className: 'mt-hintchip new', title: t.newMeeting, onClick: insertMeetingTemplate }, '➕ ', t.newMeeting),
-                h('span', { style: { flex: 1 } }),
-                renderModelSelector(),
-              ),
-              h('div', { className: 'mt-inputbar' },
-              // 📎 附件按钮（隐藏 file input 多选 + accept 白名单）
-              h('button', {
-                className: 'mt-clipbtn', disabled: uploading > 0, title: t.attachTip, 'aria-label': t.attachBtn,
-                onClick: () => fileRef.current && fileRef.current.click(),
-              }, uploading > 0 ? h('span', { className: 'mt-spin', 'aria-hidden': true }) : '📎'),
-              h('textarea', {
-                ref: inputRef, value: input, disabled: busy, placeholder: t.inputPlaceholder,
-                onChange: (e) => setInput(e.target.value),
-                onKeyDown: (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } },
-              }),
-              busy
-                ? h('button', { className: 'mt-btn stop', onClick: stopStream }, '■ ', t.stopBtn)
-                : h('button', { className: 'mt-btn primary', disabled: !input.trim() || uploading > 0, onClick: () => send() }, '➤ ', t.sendBtn),
-            ),
-              // 拖拽把手并入停靠区：无论对话框多高都可见可拖（上下拖动 520~2200px，localStorage 记忆）
+            h('div', { className: 'mt-askdock' + (dockH035 !== null ? ' mt-askdock-fixed' : ''), ref: dockRef035, style: dockH035 !== null ? { height: dockH035 + 'px' } : null },
+              // kbcAsk-20261005：把手贴卡片上沿，向上拖 = 输入区变高；双击恢复自适应
               h('div', {
                 className: 'mt-resizer',
-                role: 'separator',
+                role: 'separator', tabIndex: 0,
+                'aria-valuemin': 120, 'aria-valuemax': 1200,
+                'aria-valuenow': dockH035 !== null ? Math.round(dockH035) : undefined,
                 'aria-orientation': 'horizontal',
                 'aria-label': t.resizeHint,
                 title: t.resizeHint,
+                onKeyDown: event => {
+                  if (!['ArrowUp', 'ArrowDown', 'Home'].includes(event.key)) return
+                  event.preventDefault()
+                  if (event.key === 'Home') { setDockH035(null); return }
+                  const base = dockH035 !== null ? dockH035 : (dockRef035.current ? Math.round(dockRef035.current.getBoundingClientRect().height) : 140)
+                  setDockH035(Math.max(120, Math.min(dockMax035(), base + (event.key === 'ArrowUp' ? 40 : -40))))
+                },
+                onDoubleClick: () => setDockH035(null),
                 onMouseDown: (e) => { if (startResizeRef.current) startResizeRef.current(e) },
               }, h('span', { className: 'grip', 'aria-hidden': true })),
+              h('div', { className: 'mt-asksub' },
+                h('button', { className: 'mt-hintchip new', title: t.newMeeting, onClick: insertMeetingTemplate }, '➕ ', t.newMeeting),
+                h('span', { style: { flex: 1 } }),
+                h('span', { className: 'mt-kbc-hint' }, t.enterHint),
+              ),
+                            kbcMention
+                ? h('div', { className: 'mt-kbc-menu', role: 'listbox', 'aria-label': '引用会议' },
+                    h('div', { className: 'mt-kbc-menuhead' }, '引用会议：选定后检索范围锁定到该会议'),
+                    meetings.length
+                      ? meetings.slice(0, 20).map((m) => h('button', {
+                          key: 'kbc-' + m.id, type: 'button',
+                          className: 'mt-kbc-menuitem' + (scope === 'meeting:' + m.id ? ' on' : ''),
+                          onClick: () => { setScope('meeting:' + m.id); setKbcMention(false) },
+                        }, '@' + (m.title || '未命名会议')))
+                      : h('div', { className: 'mt-kbc-menuempty' }, '暂无可引用的会议'),
+                    h('button', {
+                      type: 'button', className: 'mt-kbc-menuitem' + (scope === 'all' ? ' on' : ''),
+                      onClick: () => { setScope('all'); setKbcMention(false) },
+                    }, '不限会议（全部资产）'),
+                  )
+                : null,
+h('div', { className: 'mt-inputbar' },
+              // 📎 附件按钮（隐藏 file input 多选 + accept 白名单）
+              h('button', {
+                className: 'mt-clipbtn mt-kbc-icon', disabled: uploading > 0, title: t.attachTip, 'aria-label': t.attachBtn,
+                onClick: () => fileRef.current && fileRef.current.click(),
+              }, uploading > 0 ? h('span', { className: 'mt-spin', 'aria-hidden': true }) : '+'),
+              h('button', {
+                type: 'button', className: 'mt-kbc-icon mt-kbc-at',
+                title: '引用会议（限定检索范围）', 'aria-label': '引用会议',
+                'aria-expanded': kbcMention ? 'true' : 'false',
+                onClick: () => setKbcMention((v) => !v),
+              }, '@'),
+              h('textarea', {
+                ref: inputRef, value: input, disabled: busy || bgRun, placeholder: t.inputPlaceholder,
+                onChange: (e) => setInput(e.target.value),
+                onKeyDown: (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } },
+              }),
+              h('span', { className: 'mt-kbc-spacer' }),
+              h('span', { className: 'mt-kbc-model' }, renderModelSelector()),
+              busy || bgRun
+                ? h('button', { className: 'mt-btn stop', onClick: stopStream }, '■ ', t.stopBtn)
+                : h('button', { className: 'mt-btn primary', disabled: !input.trim() || uploading > 0, onClick: () => send(), title: t.sendBtn, 'aria-label': t.sendBtn }, h('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2.2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true' }, h('path', { d: 'M12 19V5' }), h('path', { d: 'M5 12l7-7 7 7' }))),
+            ),
             ),
             h('input', {
               ref: fileRef, type: 'file', multiple: true, accept: '.pdf,.docx,.xlsx,.txt,.md',
               style: { display: 'none' },
-              onChange: (e) => { const fl = e.target.files; e.target.value = ''; if (fl && fl.length) void handleFiles(fl) },
+              onChange: (e) => { const fl = e.target.files; const picked = fl ? Array.prototype.slice.call(fl) : []; /* kbcFix-20261005 */ e.target.value = ''; if (picked.length) void handleFiles(picked) },
             }),
-            h('div', { className: 'mt-muted', style: { textAlign: 'center' } }, t.enterHint),
           ),
         ),
         source
@@ -2364,13 +4111,76 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
       const [detail, setDetail] = useState(null)
       const [minutesSeed, setMinutesSeed] = useState(null)
       const [askSeed, setAskSeed] = useState(null)
-      // 会议问答父项展开/收起（默认收起；点击父项展开，箭头随时切换）
-      const [askOpen, setAskOpen] = useState(false)
-      // 问答会话列表：MeetingApp 持有（rail「历史对话」标签下平铺全部会话），AskView 经 props 共享
+      // Compact meeting-owned rail; never mutate the DSH global sidebar.
+      const [railExpanded, setRailExpanded] = useState(false)
+      const compactRail = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width:900px)').matches
+      useEffect(() => {
+        if (!railExpanded) return undefined
+        const escape = event => { if (event.key === 'Escape') setRailExpanded(false) }
+        window.addEventListener('keydown', escape)
+        return () => window.removeEventListener('keydown', escape)
+      }, [railExpanded])
+      // 左滑关闭抽屉（mtNavDrawer-20261005）：横向位移 ≥60px 才关，纵向滑动交还抽屉内滚动
+      const mtSwipe = useRef({ active: false, x: 0, y: 0, dx: 0, decided: false, moved: false })
+      const mtSwipeDown = event => {
+        if (!compactRail || !railExpanded) return
+        const s = mtSwipe.current
+        s.active = true; s.x = event.clientX; s.y = event.clientY; s.dx = 0; s.decided = false; s.moved = false
+      }
+      const mtSwipeMove = event => {
+        const s = mtSwipe.current
+        if (!s.active) return
+        const mx = event.clientX - s.x, my = event.clientY - s.y
+        if (!s.decided) {
+          if (Math.abs(mx) < 8 && Math.abs(my) < 8) return
+          s.decided = true
+          if (Math.abs(my) > Math.abs(mx)) { s.active = false; return }
+          try { event.currentTarget.setPointerCapture(event.pointerId) } catch (err) {}
+        }
+        s.dx = Math.min(0, mx); s.moved = true
+        event.currentTarget.style.transition = 'none'
+        event.currentTarget.style.transform = 'translateX(' + s.dx + 'px)'
+      }
+      const mtSwipeEnd = event => {
+        const s = mtSwipe.current
+        if (!s.active) return
+        s.active = false
+        const el = event.currentTarget, dx = s.dx, moved = s.moved
+        s.dx = 0; s.moved = false
+        if (el && el.style) el.style.transition = ''
+        if (moved && dx <= -60) setRailExpanded(false)
+        const node = el
+        window.requestAnimationFrame(() => { if (node && node.style) node.style.transform = '' })
+      }
+      // Existing MeetingApp QA session state remains authoritative for the nested rail.
       const [qaSessions, setQaSessions] = useState([])
+      const [qaSessionsState, setQaSessionsState] = useState('loading')
       const [qaActiveId, setQaActiveId] = useState('')
-      const [docCount, setDocCount] = useState(null) // 已索引文档数（null = 加载失败显示 —）
+      const [docCount, setDocCount] = useState(null) // 实际已挂载文档数，失败未知
+      const [health, setHealth] = useState(null)
+      const [meetingState, setMeetingState] = useState('loading')
+      const refreshHealth = useCallback(async () => {
+        try { setHealth(await request('/health')) }
+        catch { setHealth({ error: true }) }
+      }, [])
+      useEffect(() => { refreshHealth() }, [refreshHealth])
       const toastSeq = useRef(0)
+      const navigationSeqRef = useRef(0)
+      const minutesGuardRef = useRef(null)
+      const tabRef = useRef(tab); tabRef.current = tab
+      const registerMinutesGuard = useCallback(guard => { minutesGuardRef.current = guard }, [])
+      const navigate = useCallback(async target => {
+        const guard = minutesGuardRef.current
+        if (tabRef.current === 'minutes' && target !== 'minutes' && guard) {
+          if (guard.recording) {
+            if (!window.confirm('离开前停止并封存完整录音？录音会保留在本模块。')) return false
+            if (!await guard.seal()) return false
+          } else if ((guard.busy || guard.dirty || guard.hasBlob) && !window.confirm('切页后本模块继续保留当前录音、草稿和处理任务；刷新页面仍会丢失未下载音频。继续？')) return false
+        }
+        setTab(target)
+        if (target !== 'ask') setRailExpanded(false)
+        return true
+      }, [])
 
       const showToast = useCallback((message, type) => {
         const id = ++toastSeq.current
@@ -2388,11 +4198,12 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
       }, [ctx])
 
       const refreshMeetings = useCallback(async () => {
-        setLoading(true)
+        setLoading(true); setMeetingState('loading')
         try {
           const data = await request('/meetings')
-          setMeetings(data.meetings || [])
+          setMeetings(data.meetings || []); setMeetingState('ready')
         } catch (e) {
+          setMeetingState('error')
           showToast(`${t.requestFailed}: ${e.message}`, 'error')
         } finally {
           setLoading(false)
@@ -2404,18 +4215,19 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
       const refreshQaSessions = useCallback(async () => {
         try {
           const data = await request('/qa-sessions')
-          setQaSessions(data.sessions || [])
+          setQaSessions(data.sessions || []); setQaSessionsState('ready')
         } catch {
-          /* 列表加载失败静默：rail 显示「暂无」 */
+          setQaSessionsState('error')
         }
       }, [])
       useEffect(() => { refreshQaSessions() }, [refreshQaSessions])
 
       // rail 历史会话点击：载入该会话（seed.loadSession → AskView pickSession）
-      const openQaSession = useCallback((s) => {
-        setTab('ask')
-        setAskSeed({ loadSession: s.session_id, nonce: Date.now() })
-      }, [])
+      const openQaSession = useCallback(async (s) => {
+        if (!await navigate('ask')) return false
+        setAskSeed({ loadSession: s.session_id, nonce: ++navigationSeqRef.current })
+        return true
+      }, [navigate])
 
       // rail 历史会话删除：DELETE 后刷新列表；删的是当前会话则重置回全新对话
       const removeQaSession = useCallback(async (id) => {
@@ -2424,7 +4236,7 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
           setQaSessions((list) => list.filter((x) => x.session_id !== id))
           if (qaActiveId === id) {
             setQaActiveId('')
-            setAskSeed({ reset: true, nonce: Date.now() })
+            setAskSeed({ reset: true, nonce: ++navigationSeqRef.current })
           }
           showToast(t.deleteSessionFirst, 'info')
         } catch (e) {
@@ -2441,49 +4253,37 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
         return () => { alive = false }
       }, [])
 
-      // 需求 2：面板挂载时若 DSH 侧栏处于展开态，则收起一次（仅此一次；
-      // 卸载时不展开回去——展开时机收敛到「‹ 返回主页」按钮）
-      useEffect(() => {
-        try {
-          if (typeof document === 'undefined') return
-          // 该按钮存在 ⇔ DSH 侧栏当前展开（展开态 aria-label = 收起侧边栏 / Collapse sidebar）
-          const expandedBtn = document.querySelector('button[aria-label="收起侧边栏"], button[aria-label="Collapse sidebar"]')
-          if (!expandedBtn) return
-          const layout = ctx.layout || (ctx.get && ctx.get('layout'))
-          if (layout && typeof layout.toggleSidebar === 'function') layout.toggleSidebar()
-        } catch {
-          /* 收起失败静默，不影响面板渲染 */
-        }
-      }, [ctx])
+      // Approved boundary: this module never collapses or expands the DSH global sidebar.
 
-      const gotoMinutes = useCallback((meetingId) => {
-        setTab('minutes')
-        setMinutesSeed({ meetingId, nonce: Date.now() })
-      }, [])
-      const gotoAsk = useCallback((meeting, autoQuestion) => {
-        setTab('ask')
+      const gotoMinutes = useCallback(async (meetingId) => {
+        if (!await navigate('minutes')) return
+        setMinutesSeed({ meetingId, nonce: ++navigationSeqRef.current })
+      }, [navigate])
+      const gotoAsk = useCallback(async (meeting, autoQuestion) => {
+        if (!await navigate('ask')) return
         setAskSeed({
           scope: meeting ? `meeting:${meeting.id}` : 'all',
           question: autoQuestion || (meeting ? t.detailJumpAsk(meeting.title) : ''),
           auto: Boolean(autoQuestion),
-          nonce: Date.now(),
+          nonce: ++navigationSeqRef.current,
         })
-      }, [t])
+      }, [t, navigate])
 
       // 「新建对话」二级项：清空当前会话进入全新对话（activeId=''、messages=[]、欢迎页）
-      const startNewChat = useCallback(() => {
-        setTab('ask')
-        setAskSeed({ reset: true, nonce: Date.now() })
-      }, [])
+      const startNewChat = useCallback(async () => {
+        if (!await navigate('ask')) return false
+        setAskSeed({ reset: true, nonce: ++navigationSeqRef.current })
+        return true
+      }, [navigate])
 
       // 模块级导航桥：cappacks:open-meeting → 'meetai:navigate'（含未挂载时的 pendingNav 补偿）
-      const applyNav = useCallback((nav) => {
+      const applyNav = useCallback(async (nav) => {
         const sectionTab = { 会议日程: 'schedule', 会议纪要: 'minutes', 会议问答: 'ask', schedule: 'schedule', minutes: 'minutes', ask: 'ask', create: 'create' }
         const target = sectionTab[nav.tab] || 'schedule'
-        setTab(target)
-        if (target === 'minutes' && nav.meetingId) setMinutesSeed({ meetingId: nav.meetingId, nonce: Date.now() })
-        if (target === 'ask' && (nav.scope || nav.question)) setAskSeed({ scope: nav.scope || 'all', question: nav.question || '', auto: false, nonce: Date.now() })
-      }, [])
+        if (!await navigate(target)) return
+        if (target === 'minutes' && nav.meetingId) setMinutesSeed({ meetingId: nav.meetingId, nonce: ++navigationSeqRef.current })
+        if (target === 'ask' && (nav.scope || nav.question)) setAskSeed({ scope: nav.scope || 'all', question: nav.question || '', auto: false, nonce: ++navigationSeqRef.current })
+      }, [navigate])
       useEffect(() => {
         const onNav = (e) => applyNav((e && e.detail) || {})
         if (pendingNav) {
@@ -2517,134 +4317,80 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
         }).length
       }, [meetings])
 
-      const goBack = () => {
-        try {
-          const layout = ctx.layout || (ctx.get && ctx.get('layout'))
-          if (layout && typeof layout.selectPanel === 'function') layout.selectPanel(null)
-          // 需求：返回主页会话时重新展开 DSH 左侧导航栏（与挂载时的自动收起对称）。
-          // 展开态 ⇔ 存在 aria-label「收起侧边栏 / Collapse sidebar」按钮；
-          // 收起态标记 [data-sidebar-collapsed] 作辅助信号（两者按 OR 宽容判定，宁可多展开）。
-          try {
-            if (typeof document !== 'undefined') {
-              const expandedBtn = document.querySelector('button[aria-label="收起侧边栏"], button[aria-label="Collapse sidebar"]')
-              const isCollapsed = !expandedBtn || Boolean(document.querySelector('[data-sidebar-collapsed]'))
-              if (isCollapsed && layout && typeof layout.toggleSidebar === 'function') layout.toggleSidebar()
-            }
-          } catch {
-            /* 展开失败不阻塞返回 */
-          }
-        } catch {
-          /* 打开会话区失败不阻塞 */
-        }
+      const goBack = async () => {
+        if (!await navigate('schedule')) return
+        const layout = ctx.layout || (ctx.get && ctx.get('layout'))
+        layout?.selectPanel?.(null)
       }
 
-      // 插件自有导航 rail 项：图标 + 文案 + 徽标（参考 meetai.html 原型）
-      const navItems = [
-        ['schedule', '📅', t.navSchedule, meetings.length ? h('span', { className: 'mt-railbadge', key: 'b', title: String(meetings.length) }, String(meetings.length)) : null],
-        ['create', '🗓️', t.navCreate, h('span', { className: 'mt-railtag', key: 't' }, t.aiAssistTag)],
-        ['minutes', '📝', t.navMinutes, pendingArchive ? h('span', { className: 'mt-railbadge amber', key: 'b', title: `${pendingArchive} ${t.pendingArchiveBadge}` }, String(pendingArchive)) : null],
-      ]
-
-      return h('div', { className: 'mt-app' },
-        h('style', null, CSS),
-        // 插件自有导航 rail（配色随 DSH「通用设置 → 外观」主题令牌联动）
-        h('aside', { className: 'mt-rail', 'aria-label': t.title },
-          h('div', { className: 'mt-brand' },
-            h('div', { className: 'mt-brandicon', 'aria-hidden': true }, '✦'),
-            h('div', { style: { minWidth: 0 } },
-              h('div', { className: 'mt-brandname' }, 'MeetAI', h('span', { className: 'mt-brandtag' }, t.brandTag)),
-              h('div', { className: 'mt-brandsub' }, t.brandSub),
-            ),
-          ),
-          h('nav', { className: 'mt-railnav' },
-            h('div', { className: 'mt-railsection' }, t.railSection),
-            navItems.map(([id, icon, label, badge]) =>
-              h('button', {
-                key: id,
-                className: 'mt-railitem' + (tab === id ? ' active' : ''),
-                'aria-current': tab === id ? 'page' : undefined,
-                title: label,
-                onClick: () => setTab(id),
+      return h('div', { className: 'mt-app' + (railExpanded ? ' mt-rail-expanded mt-rail-lock' : '') },
+        h('style', null, MEETING_CSS),
+        railExpanded ? h('button', { type: 'button', className: 'mt-rail-shade', 'aria-label': '收起会议问答导航', onClick: () => setRailExpanded(false) }) : null,
+        h('aside', { className: 'mt-rail', 'aria-label': '会议模块左侧栏', onPointerDown: mtSwipeDown, onPointerMove: mtSwipeMove, onPointerUp: mtSwipeEnd, onPointerCancel: mtSwipeEnd },
+          h('div', { className: 'mt-brand' }, h('span', { className: 'mt-brandicon', 'aria-hidden': true }, '会'), h('span', { className: 'mt-brandname' }, '会议助手')),
+          h('button', { type: 'button', className: 'mt-rail-toggle', 'aria-label': '收起会议导航', onClick: () => setRailExpanded(false) }, '收起导航 ×'),
+          h('nav', { className: 'mt-railnav', 'aria-label': '会议子页面' },
+            h('div', { className: 'mt-railsection' }, '会议工作区'),
+            [['schedule', '会议日程', '日'], ['minutes', '会议纪要', '纪'], ['ask', '会议问答', '问']].map(([id, label, glyph]) => h('button', {
+              key: id, type: 'button', className: 'mt-railitem' + (tab === id ? ' active' : ''),
+              title: label, 'aria-label': label, 'aria-current': tab === id ? 'page' : undefined,
+              'aria-expanded': id === 'ask' ? (compactRail ? railExpanded : tab === 'ask') : undefined,
+              onClick: async () => {
+                const moved = await navigate(id)
+                if (moved && compactRail) setRailExpanded(false)
               },
-                h('span', { className: 'ic' }, h('span', { 'aria-hidden': true }, icon), h('span', { className: 'txt' }, label)),
-                badge,
-              ),
+            }, h('span', { className: 'ic' }, h('span', { 'aria-hidden': true }, glyph), h('span', { className: 'txt' }, label)),
+              id === 'minutes' && meetingState === 'ready' && pendingArchive ? h('span', { className: 'mt-railbadge amber', title: '待归档纪要' }, pendingArchive) : null)),
+          tab === 'ask' ? h('div', { className: 'mt-railgroup', 'aria-label': '会议问答会话' },
+            h('button', { type: 'button', className: 'mt-railitem mt-railchild', title: '新增会话', 'aria-label': '新增会话',
+              onClick: async () => { if (await startNewChat()) setRailExpanded(false) } },
+              h('span', { className: 'ic' }, h('span', { 'aria-hidden': true }, '＋'), h('span', { className: 'txt' }, '新增会话'))),
+            h('section', { className: 'mt-railqa', 'aria-label': '会议问答历史会话' },
+              qaSessionsState === 'error' ? h('button', { type: 'button', className: 'mt-railitem', onClick: refreshQaSessions }, '历史读取失败 · 重试') : null,
+              qaSessions.length ? qaSessions.map(session => h('div', { className: 'mt-railrow', key: session.session_id },
+                h('button', { type: 'button', className: 'mt-session' + (qaActiveId === session.session_id ? ' active' : ''),
+                  'aria-current': qaActiveId === session.session_id ? 'page' : undefined,
+                  title: session.title || session.session_id,
+                  onClick: async () => { if (await openQaSession(session)) setRailExpanded(false) } }, session.title || session.session_id),
+                h('button', { type: 'button', className: 'mt-railremove', title: '删除该历史对话',
+                  'aria-label': '删除历史会话：' + (session.title || '未命名会话'),
+                  onClick: () => { if (window.confirm('删除该会议问答历史？此操作不可恢复。')) removeQaSession(session.session_id) } }, '×'),
+              )) : h('p', { className: 'mt-muted' }, qaSessionsState === 'loading' ? '加载历史…' : qaSessionsState === 'error' ? '历史读取失败，请重试' : '暂无历史会话'),
             ),
-            // 会议问答：可展开父项（点击 = 进入对话视图；箭头 = 展开/收起二级导航，默认展开）
-            h('button', {
-              key: 'ask',
-              className: 'mt-railitem' + (tab === 'ask' && !askOpen ? ' active' : ''),
-              'aria-current': tab === 'ask' && !askOpen ? 'page' : undefined,
-              'aria-expanded': askOpen,
-              title: t.navAsk,
-              onClick: () => { setTab('ask'); setAskOpen(true) },
-            },
-              h('span', { className: 'ic' }, h('span', { 'aria-hidden': true }, '💬'), h('span', { className: 'txt' }, t.navAsk)),
-              h('span', { className: 'mt-raildot', 'aria-hidden': true }),
-              h('span', {
-                className: 'mt-railarrow' + (askOpen ? ' open' : ''),
-                'aria-hidden': true,
-                onClick: (e) => { e.stopPropagation(); setAskOpen((o) => !o) },
-              }, '▸'),
-            ),
-            // 二级子项：「✚ 新建对话」按钮 +「🕘 历史对话」标签（标签下平铺全部历史会话，点击载入 / 悬停删除）
-            askOpen ? h('button', {
-              key: 'ask-chat',
-              className: 'mt-railsub' + (tab === 'ask' && !qaActiveId ? ' active' : ''),
-              'aria-current': tab === 'ask' && !qaActiveId ? 'page' : undefined,
-              title: t.newChat,
-              onClick: startNewChat,
-            },
-              h('span', { className: 'ic' }, h('span', { 'aria-hidden': true }, '✚'), h('span', { className: 'txt' }, t.newChat)),
-            ) : null,
-            askOpen ? h('div', { key: 'ask-histlabel', className: 'mt-raillabel' },
-              h('span', { 'aria-hidden': true }, '🕘'),
-              h('span', null, t.sessions),
-              h('span', { className: 'n' }, qaSessions.length ? String(qaSessions.length) : ''),
-            ) : null,
-            askOpen && qaSessions.length
-              ? qaSessions.map((s) => h('div', { key: `qs-${s.session_id}`, className: 'mt-railsessrow' },
-                  h('button', {
-                    className: 'mt-railsub mt-railsession' + (tab === 'ask' && qaActiveId === s.session_id ? ' active' : ''),
-                    'aria-current': tab === 'ask' && qaActiveId === s.session_id ? 'page' : undefined,
-                    title: s.title || s.session_id,
-                    onClick: () => openQaSession(s),
-                  },
-                    h('span', { className: 'txt' }, s.title || s.session_id),
-                  ),
-                  h('button', {
-                    className: 'mt-railsessdel',
-                    title: t.delSession,
-                    'aria-label': `${t.delSession}: ${s.title || s.session_id}`,
-                    onClick: (e) => { e.stopPropagation(); removeQaSession(s.session_id) },
-                  }, '🗑'),
-                ))
-              : askOpen ? h('div', { key: 'ask-histempty', className: 'mt-railempty' }, t.noSessions) : null,
-            // 统计卡：今日待开会议 / 待归档纪要 / 已索引文档
-            h('div', { className: 'mt-railstats' },
-              h('div', { className: 'cap' }, '✦ ', t.statTitle, h('span', { className: 'live' }, h('i', { 'aria-hidden': true }), t.statOnline)),
-              h('div', { className: 'mt-statrow' }, h('span', null, t.statTodayMeetings), h('b', null, t.unitMeetings(todayMeetings))),
-              h('div', { className: 'mt-statrow' }, h('span', null, t.statPendingMinutes), h('b', { className: 'indigo' }, t.unitFiles(pendingArchive))),
-              h('div', { className: 'mt-statrow' }, h('span', null, t.statIndexedDocs), h('b', null, docCount === null ? t.none : t.unitDocs(docCount))),
+          ) : null,
+          ),
+          h('button', { type: 'button', className: 'mt-railback', onClick: goBack, title: '返回主页', 'aria-label': '返回主页' }, '↩ ', h('span', { className: 'txt' }, '返回主页')),
+        ),
+        h('div', { className: 'mt-stage' },
+        h('header', { className: 'mt-topbar' },
+          h('button', { type: 'button', className: 'mt-menu', 'aria-label': railExpanded ? '收起会议导航' : '展开会议导航', 'aria-expanded': railExpanded ? 'true' : 'false', onClick: () => setRailExpanded(open => !open) }, h('span', { 'aria-hidden': true }, '☰')),
+          h('div', { className: 'mt-grow' }, h('div', { className: 'mt-kicker' }, 'MeetAI Meeting'), h('h2', null, tab === 'schedule' ? '会议日程' : tab === 'minutes' ? '会议纪要' : tab === 'ask' ? '会议问答' : '新建会议'), h('p', null, '会议日程、纪要生成与全资产问答 · 录音字幕仅临时预览')),
+          h('span', { className: 'mt-pill blue' }, '今日待开 ', meetingState === 'ready' ? todayMeetings : '未知'),
+          h('details', { className: 'mt-more' },
+            h('summary', { className: 'mt-btn small' }, health && !health.error ? '服务已连接 · AI未检测 ▾' : '状态待检测 ▾'),
+            h('div', { className: 'mt-more-menu mt-health-menu' },
+              h('p', null, health && health.error ? '状态查询失败，请重试。' : '服务：' + (health ? '已挂载' : '待检测')),
+              h('p', null, 'ASR依赖：', health && health.asr ? health.asr.state === 'available' ? '受控依赖文件存在（未实际推理）' : '依赖未就绪' : '待检测'),
+              h('p', null, '文字模型：', health && health.model ? health.model.registered === true ? '存在注册路由，推理可用性未检测' : health.model.registered === false ? '未找到注册路由' : '待检测' : '待检测'),
+              h('p', null, '会议 ', meetingState === 'ready' ? meetings.length : '未知', ' · 待归档会议 ', meetingState === 'ready' ? pendingArchive : '未知', ' · 已挂载材料 ', docCount === null ? '未知' : docCount),
+              h('button', { className: 'mt-btn small', onClick: refreshHealth }, '重新检查'),
             ),
           ),
-          // 底部「‹ 返回主页」（goBack 逻辑保留：selectPanel(null)）
-          h('button', { className: 'mt-railback', onClick: goBack, title: t.back }, '‹ ', h('span', { className: 'txt' }, t.back)),
         ),
         h('main', { className: 'mt-body' + (tab === 'ask' ? ' mt-body-ask' : '') },
           loading && !meetings.length && tab !== 'ask' ? h('div', { className: 'mt-muted' }, t.loading) : null,
+          meetingState === 'error' ? h('div', { className: 'mt-notice' }, '会议清单读取失败，数量暂不可确认；保留已加载内容。', h('button', { className: 'mt-btn small', onClick: refreshMeetings }, '重试')) : null,
           tab === 'schedule'
-            ? h(ScheduleView, { t, lang, meetings, onDetail: setDetail, onNew: () => setTab('create'), gotoMinutes, gotoAsk: (m) => gotoAsk(m), togglePin })
+            ? meetingState !== 'ready' && !meetings.length ? null : h(ScheduleView, { t, lang, meetings, onDetail: setDetail, onNew: () => navigate('create'), gotoMinutes, gotoAsk: (m) => gotoAsk(m), togglePin, showToast, refreshMeetings })
             : null,
           tab === 'create'
             ? h(CreateView, { t, onCreated: () => setTab('schedule'), showToast, refreshMeetings })
             : null,
-          tab === 'minutes'
-            ? h(MinutesView, { t, lang, meetings, showToast, seed: minutesSeed, refreshMeetings, key: 'minutes-view' })
-            : null,
+          h('section', { hidden: tab !== 'minutes', className: 'mt-minutes-owner' }, h(MinutesView, { t, lang, meetings, showToast, seed: minutesSeed, refreshMeetings, registerGuard: registerMinutesGuard, visible: tab === 'minutes', key: 'minutes-view' })),
           tab === 'ask'
-            ? h(AskView, { t, meetings, showToast, seed: askSeed, refreshMeetings, sessions: qaSessions, refreshSessions: refreshQaSessions, onActiveSession: setQaActiveId, key: 'ask-view' })
+            ? h(AskView, { t, meetings, showToast, seed: askSeed, refreshMeetings, sessions: qaSessions, refreshSessions: refreshQaSessions, onActiveSession: setQaActiveId, onNewChat: startNewChat, meetingsKnown: meetingState === 'ready', key: 'ask-view' })
             : null,
+        ),
         ),
         detail ? h(DetailModal, { t, meeting: detail, onClose: () => setDetail(null), gotoMinutes, gotoAsk: (m) => gotoAsk(m, t.detailJumpAsk(m.title)) }) : null,
         h(Toasts, { toasts }),
