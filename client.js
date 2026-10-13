@@ -1686,9 +1686,11 @@ function WordEditorPane({ minutes, onSaved, onState, apiRef }) {
       function operationActive(token) { return liveMountedRef.current && operationRef.current === token }
       function endOperation(token) { if (operationRef.current === token) operationRef.current = null }
 
-      /* —— 模式 C：粘贴文本（沿用原 generate：需绑定会议，保持旧行为） —— */
+      /* —— 模式 C：粘贴文本（mtPasteUnboundFix-20261012：不再强制绑定会议，与上传录音/实时录音一致） —— */
       async function generate() {
-        if (!targetId) return showToast(t.pickMeeting, 'warn')
+        // mtPasteUnboundFix-20261012：去掉 !targetId 拦截。后端 handleGenerateParsed 支持未绑定
+        //（prompt 分支「未绑定会议，请从转写内容推断主题」），minutesTaskBody 在 meetingId 为空时
+        // 不发送 meeting_id，因此未绑定可生成独立纪要。旧行为下该分支被按钮 disabled 遮蔽，用户无任何提示。
         if (!transcript.trim()) return showToast(t.transcriptLabel, 'warn')
         if (!templateReady || contextBusy) return
         if (dirty && !window.confirm('生成新纪要将替换预览中的未保存修改。继续？')) return
@@ -2423,7 +2425,7 @@ function WordEditorPane({ minutes, onSaved, onState, apiRef }) {
         ),
         h('textarea', { className: 'mt-textarea', style: { minHeight: 150 }, value: transcript, placeholder: '[14:30:00] 张总：本季度预算……', onChange: (e) => setTranscript(e.target.value) }),
         h('input', { ref: txtRef, type: 'file', accept: '.txt,.md,.srt', style: { display: 'none' }, onChange: (e) => importFile(e, 'transcript') }),
-        h('div', { className: 'mt-row mt-between' }, h(TaskModelPicker, { catalog: modelCatalog, value: taskModel, onChange: setTaskModel, disabled: contextBusy }), h('button', { className: 'mt-btn primary', disabled: !targetId || !transcript.trim() || contextBusy || !templateReady, onClick: generate }, busy ? t.generating : '✦ ' + t.generateBtn)),
+        h('div', { className: 'mt-row mt-between' }, h(TaskModelPicker, { catalog: modelCatalog, value: taskModel, onChange: setTaskModel, disabled: contextBusy }), h('button', { className: 'mt-btn primary', disabled: !transcript.trim() || contextBusy || !templateReady, title: contextBusy ? t.generating : !templateReady ? '纪要模板未就绪，请先刷新模板 / 模型' : !transcript.trim() ? t.transcriptLabel : (targetId ? '' : '未绑定会议：将生成独立纪要，可在上方「会议绑定」关联到某场会议'), onClick: generate }, busy ? t.generating : '✦ ' + t.generateBtn)),
       )
 
       const splitLatestRef=useRef(null);splitLatestRef.current={targetId,blocked:contextBusy||dirty}
@@ -2431,7 +2433,7 @@ function WordEditorPane({ minutes, onSaved, onState, apiRef }) {
       return h('div', { className: 'mt-stack mt-minutes-view' },
         h(SplitLegacyPanel,{key:targetId,meetingId:targetId,locked:contextBusy||dirty,showToast,onLatest:async id=>{if(splitLatestRef.current?.blocked)return;const owner=targetId,seq=++minuteLoadSeq.current;try{const data=await request('/minutes/'+encodeURIComponent(id));if(splitLatestRef.current?.targetId===owner&&!splitLatestRef.current?.blocked&&seq===minuteLoadSeq.current&&data.minutes?.meeting_id===owner){setMinutes(data.minutes);setDraft(null);setEditing(false)}}catch(error){if(splitLatestRef.current?.targetId===owner)showToast(error.message,'error')}}}),
         h('div', { className: 'mt-card mt-context' },
-          h('label', { className: 'mt-field' }, '会议绑定（录音可不绑定，粘贴文本需绑定）', h('select', { className: 'mt-select', value: targetId, disabled: contextLocked, title: audioUrl ? '保留录音的会议绑定已锁定；请先下载并放弃录音再改绑' : contextBusy ? '任务处理中，暂不能改绑' : '', onChange: event => changeMeeting(event.target.value) }, h('option', { value: '' }, '不绑定会议 / 独立录音纪要'), meetings.map(item => h('option', { value: item.id, key: item.id }, item.title + '（' + fmtDay(item.start_time) + '）')))),
+          h('label', { className: 'mt-field' }, '会议绑定（可选：不绑定则生成独立纪要；绑定后纪要关联该场会议）', h('select', { className: 'mt-select', value: targetId, disabled: contextLocked, title: audioUrl ? '保留录音的会议绑定已锁定；请先下载并放弃录音再改绑' : contextBusy ? '任务处理中，暂不能改绑' : '', onChange: event => changeMeeting(event.target.value) }, h('option', { value: '' }, '不绑定会议 / 独立录音纪要'), meetings.map(item => h('option', { value: item.id, key: item.id }, item.title + '（' + fmtDay(item.start_time) + '）')))),
           h('label', { className: 'mt-field' }, '纪要模板', h('select', { className:'mt-select', value:template, disabled:contextLocked || templateCatalog.state!=='ready', onChange:event=>setTemplate(event.target.value) }, templateCatalog.rows.map(item=>h('option',{key:item.id,value:item.id},item.name)))),
           h('div', { className:'mt-field' }, h('span', null, '上传Word模板（仅本次）'),
             h('div', {className:'mt-word-pick035'}, h('button',{className:'mt-btn small',disabled:contextBusy,onClick:()=>wordInput.current?.click()},wordBusy?'验证中…':'选择文件'),
