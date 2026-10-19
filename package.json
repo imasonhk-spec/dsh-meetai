@@ -1,6 +1,6 @@
 {
   "name": "dsh-meetai",
-  "version": "0.3.10-composer.1",
+  "version": "0.3.11-composer.1",
   "private": true,
   "type": "module",
   "description": "KB 同款输入框移植版：圆角卡片 + 工具条（附件/引用/模型/圆形发送）+ 文件夹拖拽；并修复附件按钮静默失效与受限问答拖拽冒泡",
