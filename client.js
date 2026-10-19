@@ -496,6 +496,17 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
 .mt-railqa .mt-session{flex:1;min-width:0;text-align:left}
 .mt-railqa .mt-railremove{border:0;background:none;color:var(--dsw-alias-label-tertiary);cursor:pointer}
 .mt-railqa .mt-railremove:hover{color:var(--dsw-alias-state-error-primary)}
+/* mtHist-20261019：历史对话「更多操作」菜单 / 行内重命名 / 归档对话入口 */
+.mt-railqa .mt-morebtn{border:0;background:none;color:var(--dsw-alias-label-tertiary);cursor:pointer;padding:1px 4px;line-height:1.1;font-size:13px;border-radius:6px;flex:none}
+.mt-railqa .mt-morebtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.mt-sessionmenu{display:flex;flex-direction:column;gap:1px;padding:4px;background:#fff;border:1px solid #dfe5ee;border-radius:10px;box-shadow:0 8px 26px rgba(23,43,77,.16)}
+.mt-sessionmenu button{display:flex;align-items:center;gap:7px;width:100%;text-align:left;border:0;background:none;border-radius:7px;padding:7px 9px;font-size:12.5px;color:#2a3342;cursor:pointer}
+.mt-sessionmenu button:hover{background:#f2f5fa}
+.mt-sessionmenu button.danger{color:#d4380d}
+.mt-sessionmenu button.danger:hover{background:#fff1f0}
+.mt-railqa .mt-reninput{flex:1;min-width:0;font-size:12px;padding:5px 7px;border:1px solid var(--dsw-alias-state-business-primary);border-radius:8px;background:#fff;color:#2a3342}
+.mt-railqa .mt-archtoggle{width:100%;text-align:left;border:0;background:none;color:var(--dsw-alias-label-tertiary);cursor:pointer;font-size:11px;padding:5px 7px;border-radius:7px}
+.mt-railqa .mt-archtoggle:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .mt-livewrap,.mt-caption-float{background:#fff;color:#243247;border:1px solid #d9e1eb;box-shadow:0 4px 18px rgba(26,43,66,.08);font:13px/1.6 system-ui,sans-serif}
 .mt-livewrap{display:flex;flex-direction:column;gap:10px;min-height:130px;padding:14px;max-height:260px}
 .mt-livewrap .mt-muted,.mt-caption-handle{color:#506178}.mt-caption-float .mt-livewrap{border:0;box-shadow:none}
@@ -521,7 +532,7 @@ html[data-mt-resizing],html[data-mt-resizing] *{cursor:ns-resize!important;user-
  .mt-app.mt-rail-expanded .mt-rail-shade{display:block;position:absolute;inset:0;background:rgba(0,0,0,.3);z-index:1201;border:0;cursor:pointer}
 }
 `
-const QA035_CSS = "\n.mt-app .mt-askwrap,.mt-app .mt-askbody,.mt-app .mt-askpanel{min-width:0;box-sizing:border-box;max-width:100%}\n.mt-app .mt-askwrap{display:flex;flex-direction:column;min-height:0;padding:12px}\n.mt-app .mt-asktop,.mt-app .mt-asksub{display:flex;flex-wrap:wrap;min-width:0;max-width:100%;gap:8px;box-sizing:border-box;flex:none}\n.mt-app .mt-asktop>.mt-select{flex:1 1 190px;min-width:0;max-width:100%;width:0}\n.mt-app .mt-asktop>.mt-muted{flex:1 1 190px;min-width:0;overflow-wrap:anywhere}\n.mt-app .mt-asksub .mt-select{flex:1 1 190px;min-width:0;width:0;max-width:100%;box-sizing:border-box}\n.mt-app .mt-asksub>.mt-btn,.mt-app .mt-asksub>.mt-hintchip,.mt-app .mt-asktop>.mt-btn{max-width:100%;white-space:normal;overflow-wrap:anywhere}\n.mt-app .mt-askbody,.mt-app .mt-askpanel{display:flex;flex:1;flex-direction:column;min-height:0}\n.mt-app .mt-msgs{flex:1;min-width:0;min-height:0;overflow-y:auto;overflow-wrap:anywhere}\n.mt-app .mt-inputbar{min-width:0;max-width:100%;box-sizing:border-box;flex-wrap:wrap}\n.mt-app .mt-inputbar textarea{min-width:0;flex:1 1 140px;width:0;box-sizing:border-box}\n.mt-app .mt-askdock{background:var(--dsw-alias-bg-layer-1);min-width:0;max-width:100%}\n.mt-app .mt-attachrow,.mt-app .mt-msgsrc{min-width:0;max-width:100%;flex-wrap:wrap;overflow-wrap:anywhere}\n.mt-app .mt-qa-message035{display:flex;align-items:flex-start;gap:8px;width:100%;min-width:0;margin:10px 0}\n.mt-app .mt-qa-message035.user{flex-direction:row-reverse}\n.mt-app .mt-qa-avatar035{width:36px;height:36px;flex:none}\n.mt-app .mt-qa-message035>.mt-bubble{min-width:0;max-width:calc(100% - 44px);margin:0;overflow-wrap:anywhere}\n.mt-app .mt-qa-message035>.mt-qa-col035{display:flex;flex-direction:column;min-width:0;max-width:calc(100% - 44px)}\n.mt-app .mt-qa-message035.user>.mt-qa-col035{align-items:flex-end}\n.mt-app .mt-qa-col035>.mt-bubble{min-width:0;max-width:100%;margin:0;overflow-wrap:anywhere}\n.mt-app .mt-qa-time035{font-size:11px;line-height:1.5;margin-top:3px;color:var(--dsw-alias-label-secondary);opacity:.85;font-variant-numeric:tabular-nums;white-space:nowrap}\n.mt-app .mt-qa-message035 a,.mt-app .mt-qa-message035 .mt-linkchip{overflow-wrap:anywhere;max-width:100%;white-space:normal}\n.mt-app .mt-qa-message035 pre{max-width:100%;overflow:auto}\n.mt-app .mt-context{container-type:inline-size;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start}\n.mt-app .mt-context>.mt-field{min-width:0;max-width:100%}\n.mt-app .mt-context .mt-select,.mt-app .mt-word-pick035{height:36px;border-radius:8px;min-width:0;max-width:100%;width:100%;box-sizing:border-box}\n.mt-app .mt-word-pick035{display:flex;align-items:center;gap:6px;border:1px solid var(--dsw-alias-border-l1);padding:0 8px;background:var(--dsw-alias-bg-layer-1)}\n.mt-app .mt-word-pick035>.mt-btn{border:0;background:none;padding:3px;flex:none}\n.mt-app .mt-word-pick035>.mt-chip{flex:1;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.mt-app .mt-context>.mt-context-status035,.mt-app .mt-context>.mt-notice{grid-column:1/-1}\n@container(max-width:760px){.mt-app .mt-context>.mt-field{grid-column:1/-1}}\n@media(max-width:600px){.mt-app .mt-context{grid-template-columns:minmax(0,1fr)}.mt-app .mt-qa-avatar035{width:30px;height:30px}.mt-app .mt-qa-message035>.mt-bubble{max-width:calc(100% - 38px)}.mt-app .mt-qa-message035>.mt-qa-col035{max-width:calc(100% - 38px)}}\n"
+const QA035_CSS = "\n.mt-app .mt-askwrap,.mt-app .mt-askbody,.mt-app .mt-askpanel{min-width:0;box-sizing:border-box;max-width:100%}\n.mt-app .mt-askwrap{display:flex;flex-direction:column;min-height:0;padding:12px}\n.mt-app .mt-asktop,.mt-app .mt-asksub{display:flex;flex-wrap:wrap;min-width:0;max-width:100%;gap:8px;box-sizing:border-box;flex:none}\n.mt-app .mt-asktop>.mt-select{flex:1 1 190px;min-width:0;max-width:100%;width:0}\n.mt-app .mt-asktop>.mt-muted{flex:1 1 190px;min-width:0;overflow-wrap:anywhere}\n.mt-app .mt-asksub .mt-select{flex:1 1 190px;min-width:0;width:0;max-width:100%;box-sizing:border-box}\n.mt-app .mt-asksub>.mt-btn,.mt-app .mt-asksub>.mt-hintchip,.mt-app .mt-asktop>.mt-btn{max-width:100%;white-space:normal;overflow-wrap:anywhere}\n.mt-app .mt-askbody,.mt-app .mt-askpanel{display:flex;flex:1;flex-direction:column;min-height:0}\n.mt-app .mt-msgs{flex:1;min-width:0;min-height:0;overflow-y:auto;overflow-wrap:anywhere}\n.mt-app .mt-inputbar{min-width:0;max-width:100%;box-sizing:border-box;flex-wrap:wrap}\n.mt-app .mt-inputbar textarea{min-width:0;flex:1 1 140px;width:0;box-sizing:border-box}\n.mt-app .mt-askdock{background:var(--dsw-alias-bg-layer-1);min-width:0;max-width:100%}\n.mt-app .mt-attachrow,.mt-app .mt-msgsrc{min-width:0;max-width:100%;flex-wrap:wrap;overflow-wrap:anywhere}\n.mt-app .mt-qa-message035{display:flex;align-items:flex-start;gap:8px;width:100%;min-width:0;margin:10px 0}\n.mt-app .mt-qa-message035.user{flex-direction:row-reverse}\n.mt-app .mt-qa-avatar035{width:36px;height:36px;flex:none}\n.mt-app .mt-qa-message035>.mt-bubble{min-width:0;max-width:calc(100% - 44px);margin:0;overflow-wrap:anywhere}\n.mt-app .mt-qa-message035>.mt-qa-col035{display:flex;flex-direction:column;min-width:0;max-width:calc(100% - 44px)}\n.mt-app .mt-qa-message035.user>.mt-qa-col035{align-items:flex-end}\n.mt-app .mt-qa-col035>.mt-bubble{min-width:0;max-width:100%;margin:0;overflow-wrap:anywhere}\n.mt-app .mt-qa-time035{font-size:11px;line-height:1.5;margin-top:3px;color:var(--dsw-alias-label-secondary);opacity:.85;font-variant-numeric:tabular-nums;white-space:nowrap}\n.mt-app .mt-qa-message035 a,.mt-app .mt-qa-message035 .mt-linkchip{overflow-wrap:anywhere;max-width:100%;white-space:normal}\n.mt-app .mt-qa-message035 pre{max-width:100%;overflow:auto}\n.mt-app .mt-context{container-type:inline-size;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start}\n.mt-app .mt-context>.mt-field{min-width:0;max-width:100%}\n.mt-app .mt-context .mt-select,.mt-app .mt-word-pick035{height:36px;border-radius:8px;min-width:0;max-width:100%;width:100%;box-sizing:border-box}\n.mt-app .mt-word-pick035{display:flex;align-items:center;gap:6px;border:1px solid var(--dsw-alias-border-l1);padding:0 8px;background:var(--dsw-alias-bg-layer-1)}\n.mt-app .mt-word-pick035>.mt-btn{border:0;background:none;padding:3px;flex:none}\n.mt-app .mt-word-pick035>.mt-chip{flex:1;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.mt-app .mt-context>.mt-context-status035,.mt-app .mt-context>.mt-notice{grid-column:1/-1}\n@container(max-width:760px){.mt-app .mt-context>.mt-field{grid-column:1/-1}}\n@media(max-width:600px){.mt-app .mt-context{grid-template-columns:minmax(0,1fr)}.mt-app .mt-qa-avatar035{width:30px;height:30px}.mt-app .mt-qa-message035>.mt-bubble{max-width:calc(100% - 38px)}.mt-app .mt-qa-message035>.mt-qa-col035{max-width:calc(100% - 38px)}}\n.mt-app .mt-genopt035{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--dsw-alias-border-l1);padding-top:10px}.mt-app .mt-genopt035>.mt-row>.mt-btn{flex:none}.mt-app .mt-genopt-body035{border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:12px}.mt-app .mt-newmeeting035{border:1px dashed var(--dsw-alias-border-l1);border-radius:10px;padding:12px;background:transparent}.mt-app .mt-newmeeting035 .mt-grid2{gap:10px}@media(max-width:860px){.mt-app .mt-genopt035>.mt-row{flex-wrap:wrap}}"
 const QA_INPUT_WIDTH_FIX_CSS = `
 .mt-app .mt-inputbar{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;width:100%;min-width:0;max-width:100%;box-sizing:border-box}
 .mt-app .mt-inputbar>textarea{grid-column:1 / -1;grid-row:1;width:100%;min-width:0;max-width:100%;box-sizing:border-box}
@@ -638,7 +649,13 @@ const MEETING_CSS = scopeMeetingCss(CSS.replace(/html\[data-mt-resizing\],html\[
         srcTitle: '引文溯源', srcSource: '引文来源', srcStamp: '精确时间戳 / 定位', srcText: '原文片段', close: '我知道了', quote: '引用',
         loading: '加载中…', requestFailed: '请求失败', meetingDeleted: '会议已删除', deleteSessionFirst: '已删除会话', detailJumpAsk: (t) => `请针对《${t}》的核心共识与待办事项做全面梳理`,
         agendaFromMeeting: '议程', none: '—',
-        newChat: '新建对话', histChat: '历史对话', resizeHint: '拖动上沿调整输入框高度，双击恢复随内容自适应',
+        newChat: '新建对话', histChat: '历史对话',
+        /* mtHist-20261019：历史对话「更多操作」 */
+        moreActions: '更多操作', pinSession: '置顶', unpinSession: '取消置顶', renameSession: '重命名',
+        archiveSession: '归档', unarchiveSession: '取消归档', archivedChat: '归档对话', backToHistory: '返回历史对话',
+        noSessions2: '暂无历史会话', noArchived: '暂无归档会话',
+        pinOk: '已置顶', unpinOk: '已取消置顶', renameOk: '已重命名', renameEmpty: '会话名称不能为空',
+        archiveOk: '已归档', unarchiveOk: '已取消归档', resizeHint: '拖动上沿调整输入框高度，双击恢复随内容自适应',
         attachBtn: '添加附件', attachTip: '支持 .pdf / .docx / .xlsx / .txt / .md，单文件 ≤30MB', attUploading: '附件上传中…',
         attTooBig: '文件超过 30MB 上限', attUnsupported: '不支持的文件类型（仅 .pdf / .docx / .xlsx / .txt / .md）',
         attUploadFail: '附件上传失败', attRemove: '移除附件', dropHint: '松开以添加附件',
@@ -691,7 +708,13 @@ const MEETING_CSS = scopeMeetingCss(CSS.replace(/html\[data-mt-resizing\],html\[
         srcTitle: 'Citation source', srcSource: 'Source', srcStamp: 'Timestamp / locator', srcText: 'Original snippet', close: 'Got it', quote: 'Cite',
         loading: 'Loading…', requestFailed: 'Request failed', meetingDeleted: 'Meeting deleted', deleteSessionFirst: 'Session deleted', detailJumpAsk: (t) => `Summarize the key consensus and action items of "${t}"`,
         agendaFromMeeting: 'Agenda', none: '—',
-        newChat: 'New chat', histChat: 'History', resizeHint: 'Drag the top edge to resize the input box; double-click to reset',
+        newChat: 'New chat', histChat: 'History',
+        /* mtHist-20261019：history conversation "more actions" */
+        moreActions: 'More actions', pinSession: 'Pin', unpinSession: 'Unpin', renameSession: 'Rename',
+        archiveSession: 'Archive', unarchiveSession: 'Unarchive', archivedChat: 'Archived chats', backToHistory: 'Back to history',
+        noSessions2: 'No history yet', noArchived: 'No archived chats',
+        pinOk: 'Pinned', unpinOk: 'Unpinned', renameOk: 'Renamed', renameEmpty: 'Session name cannot be empty',
+        archiveOk: 'Archived', unarchiveOk: 'Unarchived', resizeHint: 'Drag the top edge to resize the input box; double-click to reset',
         attachBtn: 'Attach files', attachTip: 'PDF / DOCX / XLSX / TXT / MD, ≤30MB each', attUploading: 'Uploading attachments…',
         attTooBig: 'File exceeds the 30MB limit', attUnsupported: 'Unsupported file type (.pdf / .docx / .xlsx / .txt / .md only)',
         attUploadFail: 'Failed to upload attachment', attRemove: 'Remove attachment', dropHint: 'Release to attach',
@@ -1481,7 +1504,89 @@ function WordEditorPane({ minutes, onSaved, onState, apiRef }) {
       const [generationActive035,setGenerationActive035] = useState(false)
       const generationAbort035=useRef(null),generationInput035=useRef(null)
       useEffect(()=>()=>generationAbort035.current?.abort(),[])
+      /* mtGenOpt-20261019：生成纪要的可配置项 —— 会议绑定 / 会议信息 / 纪要模板 / Word模板 收进生成动作内；
+       * 未绑定会议时，点击生成会先创建会议（会议信息必填），再携带 meeting_id 生成纪要。 */
+      const L035 = (zh, en) => (lang === 'en' ? en : zh)
+      const [genOptOpen035, setGenOptOpen035] = useState(false)
+      const [newMeeting035, setNewMeeting035] = useState({ title: '', start: '', end: '', location: '', participants: '', type: 'offline' })
+      const [newMeetingBusy035, setNewMeetingBusy035] = useState(false)
+      const createdMeeting035 = useRef({ signature: '', meetingId: '' })
+      const previewRef035 = useRef(null)
+      const lastMinutesId035 = useRef(null)
+      function pad2b035(v) { return String(v).padStart(2, '0') }
+      function localInput035(date) { return `${date.getFullYear()}-${pad2b035(date.getMonth() + 1)}-${pad2b035(date.getDate())}T${pad2b035(date.getHours())}:${pad2b035(date.getMinutes())}` }
+      function focusGenOpt035(key) {
+        setGenOptOpen035(true)
+        setTimeout(() => {
+          const node = document.querySelector(`[data-genopt035="${key}"]`)
+          if (!node) return
+          node.scrollIntoView?.({ block: 'nearest' })
+          node.focus?.()
+        }, 0)
+      }
+      function defaultMeetingTitle035() {
+        const raw = srcMode === 'upload' ? upTranscript : transcript
+        const line = String(raw || '').split('\n').map((row) => row.trim()).find(Boolean) || ''
+        if (line) return line.replace(/^\[\d{1,2}:\d{2}(:\d{2})?\]\s*/, '').replace(/^[^：:]{0,12}[：:]\s*/, '').slice(0, 60)
+        const name = srcMode === 'upload' && uploadRec?.filename ? String(uploadRec.filename) : ''
+        if (name) return name.replace(/\.[^.]+$/, '').slice(0, 60)
+        return `${new Date().toISOString().slice(0, 10)} 会议纪要`
+      }
+      function meetingSignature035(form) { return [form.title, form.start, form.end, form.location, form.participants, form.type].join('\u0001') }
+      // 返回带 meeting_id 的新 body；校验不通过时抛错（调用方已有 toast 兜底）。
+      async function ensureMeetingForGenerate035(body) {
+        if (body && body.meeting_id) return body
+        if (audioUrl) {
+          focusGenOpt035('bind')
+          throw new Error(L035('未绑定会议：已保留录音的会议绑定不可更改，请先绑定会议，或下载并放弃录音后重试。', 'No meeting bound: the binding is locked while a recording is kept. Bind a meeting, or download and discard the recording, then retry.'))
+        }
+        const form = { ...newMeeting035 }
+        if (!form.start) form.start = localInput035(new Date())
+        if (!form.end) form.end = localInput035(new Date(Date.parse(form.start) + 3600000))
+        if (!form.title.trim()) form.title = defaultMeetingTitle035()
+        setNewMeeting035(form)
+        if (!form.title.trim()) {
+          focusGenOpt035('title')
+          throw new Error(L035('未绑定会议：请先填写会议主题。', 'No meeting bound: fill in the meeting title first.'))
+        }
+        const startMs = Date.parse(form.start), endMs = Date.parse(form.end)
+        if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(form.start) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(form.end) || !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+          focusGenOpt035(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(form.start) ? 'end' : 'start')
+          throw new Error(L035('未绑定会议：请填写合法的开始／结束时间（结束须晚于开始）。', 'No meeting bound: provide valid start/end times (end must be later than start).'))
+        }
+        const signature = meetingSignature035(form)
+        if (createdMeeting035.current.meetingId && createdMeeting035.current.signature === signature) {
+          return { ...body, meeting_id: createdMeeting035.current.meetingId }
+        }
+        setNewMeetingBusy035(true)
+        setGenerationProgress035({ state: 'queued', label: L035('正在创建会议并准备纪要…', 'Creating the meeting before generating minutes…') })
+        try {
+          const data = await request('/meetings', json({
+            title: form.title.trim(),
+            start_time: new Date(startMs).toISOString(),
+            end_time: new Date(endMs).toISOString(),
+            type: form.type,
+            location: form.location.trim(),
+            participants: form.participants.split(/[,，、]/).map((row) => row.trim()).filter(Boolean),
+            agenda: [],
+          }))
+          const id = data && data.meeting && data.meeting.id
+          if (!id) throw new Error(L035('服务端未返回会议标识', 'the server returned no meeting id'))
+          createdMeeting035.current = { signature, meetingId: id }
+          setTargetId(id)
+          await refreshMeetings()
+          // 录音先于建会上传时会话不携带 meeting_id；这里补挂一次，保证录音与会议同源可查。
+          if (body && body.recording_id) request(`/recordings/${encodeURIComponent(body.recording_id)}`, patch({ meeting_id: id })).catch(() => {})
+          showToast(L035(`已创建会议「${form.title.trim()}」，正在生成纪要…`, `Meeting "${form.title.trim()}" created; generating minutes…`), 'info')
+          return { ...body, meeting_id: id }
+        } catch (error) {
+          if (createdMeeting035.current.meetingId) throw error
+          throw new Error(L035('会议创建失败，纪要未生成：', 'Meeting creation failed, minutes were not generated: ') + (error.message || ''))
+        } finally { setNewMeetingBusy035(false) }
+      }
+
       async function runGeneration035(body,options={}) {
+        if (body) body = await ensureMeetingForGenerate035(body)
         const ac=new AbortController(),abort=()=>ac.abort()
         generationAbort035.current=ac;setGenerationActive035(true)
         if(body)generationInput035.current=body
@@ -2425,36 +2530,82 @@ function WordEditorPane({ minutes, onSaved, onState, apiRef }) {
         ),
         h('textarea', { className: 'mt-textarea', style: { minHeight: 150 }, value: transcript, placeholder: '[14:30:00] 张总：本季度预算……', onChange: (e) => setTranscript(e.target.value) }),
         h('input', { ref: txtRef, type: 'file', accept: '.txt,.md,.srt', style: { display: 'none' }, onChange: (e) => importFile(e, 'transcript') }),
-        h('div', { className: 'mt-row mt-between' }, h(TaskModelPicker, { catalog: modelCatalog, value: taskModel, onChange: setTaskModel, disabled: contextBusy }), h('button', { className: 'mt-btn primary', disabled: !transcript.trim() || contextBusy || !templateReady, title: contextBusy ? t.generating : !templateReady ? '纪要模板未就绪，请先刷新模板 / 模型' : !transcript.trim() ? t.transcriptLabel : (targetId ? '' : '未绑定会议：将生成独立纪要，可在上方「会议绑定」关联到某场会议'), onClick: generate }, busy ? t.generating : '✦ ' + t.generateBtn)),
+        h('div', { className: 'mt-row mt-between' }, h(TaskModelPicker, { catalog: modelCatalog, value: taskModel, onChange: setTaskModel, disabled: contextBusy }), h('button', { className: 'mt-btn primary', disabled: !transcript.trim() || contextBusy || !templateReady, title: contextBusy ? t.generating : !templateReady ? '纪要模板未就绪，请先刷新模板 / 模型' : !transcript.trim() ? t.transcriptLabel : (targetId ? '' : '未绑定会议：生成前需填写会议信息（在「生成纪要设置」中）'), onClick: generate }, busy ? t.generating : '✦ ' + t.generateBtn)),
       )
 
       const splitLatestRef=useRef(null);splitLatestRef.current={targetId,blocked:contextBusy||dirty}
+      // mtGenOpt-20261019：纪要概览默认不显示；生成成功或该会议已有纪要时才出现。
+      useEffect(() => {
+        const id = minutes?.minutes_id || null
+        if (id && id !== lastMinutesId035.current) {
+          lastMinutesId035.current = id
+          setTimeout(() => previewRef035.current?.scrollIntoView?.({ block: 'nearest' }), 0)
+        }
+      }, [minutes?.minutes_id])
+      const minutesFallback035 = minuteLoad === 'loading'
+        ? h('div', { className: 'mt-muted', role: 'status' }, L035('正在加载该会议纪要…', 'Loading the minutes for this meeting…'))
+        : minuteLoad === 'error'
+          ? h('div', { className: 'mt-notice' }, L035('纪要读取失败，不代表无记录。', 'Failed to read the minutes; this does not mean there is none.'), h('button', { className: 'mt-btn small', onClick: () => loadMinutes(targetId) }, L035('重试', 'Retry')))
+          : null
+      // mtGenOpt-20261019：三项配置（会议绑定 / 纪要模板 / 上传Word模板）收进「生成纪要设置」，默认折叠。
+      const genConfig035 = h('section', { className: 'mt-genopt035' },
+        h('div', { className: 'mt-row mt-between' },
+          h('button', { className: 'mt-btn small', 'aria-expanded': genOptOpen035, 'aria-controls': 'mt-genopt-body035', onClick: () => setGenOptOpen035((open) => !open) }, (genOptOpen035 ? '▾ ' : '▸ ') + L035('生成纪要设置', 'Generation settings')),
+          h('span', { className: 'mt-muted' }, L035('会议绑定 / 会议信息 / 纪要模板 / Word模板', 'Meeting / info / template / Word')),
+        ),
+        genOptOpen035 ? h('div', { className: 'mt-stack mt-genopt-body035', id: 'mt-genopt-body035' },
+          h('label', { className: 'mt-field' }, L035('会议绑定（生成纪要必须关联一场会议）', 'Meeting binding (minutes must belong to a meeting)'),
+            h('select', { className: 'mt-select', 'data-genopt035': 'bind', value: targetId || '__new__', disabled: contextLocked || newMeetingBusy035, title: audioUrl ? '保留录音的会议绑定已锁定；请先下载并放弃录音再改绑' : contextBusy ? '任务处理中，暂不能改绑' : '', onChange: (event) => changeMeeting(event.target.value === '__new__' ? '' : event.target.value) },
+              h('option', { value: '__new__' }, L035('＋ 新建会议（需填写会议信息）', '+ New meeting (meeting info required)')),
+              meetings.map((item) => h('option', { value: item.id, key: item.id }, item.title + '（' + fmtDay(item.start_time) + '）')),
+            )),
+          !targetId ? h('div', { className: 'mt-card mt-stack mt-newmeeting035' },
+            h('div', { className: 'mt-row mt-between' },
+              h('b', null, L035('会议信息（未绑定会议时必填）', 'Meeting info (required when unbound)')),
+              h('span', { className: 'mt-muted' }, L035('点击生成时先创建该会议', 'created when you generate')),
+            ),
+            h('div', { className: 'mt-grid2' },
+              h('label', { className: 'mt-field' }, L035('会议主题 *', 'Meeting title *'), h('input', { className: 'mt-input', 'data-genopt035': 'title', maxLength: 120, value: newMeeting035.title, placeholder: '例如：Q4 算力扩容专项评审会', onChange: (event) => setNewMeeting035((form) => ({ ...form, title: event.target.value })) })),
+              h('label', { className: 'mt-field' }, L035('地点', 'Location'), h('input', { className: 'mt-input', value: newMeeting035.location, onChange: (event) => setNewMeeting035((form) => ({ ...form, location: event.target.value })) })),
+              h('label', { className: 'mt-field' }, L035('开始时间 *', 'Start *'), h('input', { className: 'mt-input', type: 'datetime-local', 'data-genopt035': 'start', value: newMeeting035.start, onChange: (event) => setNewMeeting035((form) => ({ ...form, start: event.target.value })) })),
+              h('label', { className: 'mt-field' }, L035('结束时间 *', 'End *'), h('input', { className: 'mt-input', type: 'datetime-local', 'data-genopt035': 'end', value: newMeeting035.end, onChange: (event) => setNewMeeting035((form) => ({ ...form, end: event.target.value })) })),
+              h('label', { className: 'mt-field' }, L035('参会人', 'Participants'), h('input', { className: 'mt-input', value: newMeeting035.participants, placeholder: '张三, 李四', onChange: (event) => setNewMeeting035((form) => ({ ...form, participants: event.target.value })) })),
+              h('label', { className: 'mt-field' }, L035('形式', 'Type'), h('select', { className: 'mt-select', value: newMeeting035.type, onChange: (event) => setNewMeeting035((form) => ({ ...form, type: event.target.value })) }, [['offline', L035('线下', 'Offline')], ['online', L035('线上', 'Online')], ['hybrid', L035('混合', 'Hybrid')]].map(([id, label]) => h('option', { key: id, value: id }, label)))),
+            ),
+            h('div', { className: 'mt-row' },
+              h('button', { className: 'mt-btn small', disabled: newMeetingBusy035 || contextBusy, onClick: () => { const now = new Date(); setNewMeeting035((form) => ({ ...form, start: form.start || localInput035(now), end: form.end || localInput035(new Date(now.getTime() + 3600000)), title: form.title || defaultMeetingTitle035() })) } }, L035('按当前时间预填', 'Prefill current time')),
+              h('span', { className: 'mt-muted' }, L035('未绑定会议时，点击生成会先创建会议，再生成纪要。', 'When unbound, generating creates the meeting first.')),
+            ),
+          ) : null,
+          h('label', { className: 'mt-field' }, L035('纪要模板', 'Minutes template'), h('select', { className: 'mt-select', value: template, disabled: contextLocked || templateCatalog.state !== 'ready', onChange: (event) => setTemplate(event.target.value) }, templateCatalog.rows.map((item) => h('option', { key: item.id, value: item.id }, item.name)))),
+          h('div', { className: 'mt-field' }, h('span', null, L035('上传Word模板（仅本次）', 'Upload Word template (this run only)')),
+            h('div', { className: 'mt-word-pick035' }, h('button', { className: 'mt-btn small', disabled: contextBusy || newMeetingBusy035, onClick: () => wordInput.current?.click() }, wordBusy ? L035('验证中…', 'Validating…') : L035('选择文件', 'Choose file')),
+              h('span', { className: 'mt-chip', title: wordTemplate?.name || L035('未选择文件', 'No file selected') }, wordTemplate?.name || L035('未选择文件', 'No file selected')),
+              wordTemplate ? h('button', { className: 'mt-btn small', disabled: contextBusy, onClick: removeWordTemplate, 'aria-label': '移除本次Word模板' }, L035('移除', 'Remove')) : null),
+            h('input', { ref: wordInput, type: 'file', accept: '.docx', style: { display: 'none' }, onChange: pickWordTemplate }),
+            h('span', { className: 'mt-muted' }, L035('成功生成后消费一次；人工编辑／导出不会消费模板。', 'Consumed once after a successful generation; manual editing/export does not consume it.'))),
+          h('div', { className: 'mt-row mt-context-status035' }, MinutesPill({ value: statusValue, t }), h('button', { className: 'mt-btn small', disabled: contextBusy, onClick: refreshCatalogs }, L035('刷新模板 / 模型', 'Refresh templates / models'))),
+          templateCatalog.state !== 'ready' ? h('div', { className: 'mt-notice' }, templateCatalog.state === 'loading' ? L035('模板加载中…', 'Loading templates…') : L035('真实模板加载失败，请重试。', 'Failed to load real templates; please retry.')) : null,
+          !minutes ? h('div', { className: 'mt-muted' }, L035('该会议尚无纪要；选择来源、确认生成设置后点击生成。', 'No minutes for this meeting yet. Pick a source, confirm the settings and generate.')) : null,
+        ) : null,
+      )
+
       useEffect(()=>()=>{splitLatestRef.current=null},[])
       return h('div', { className: 'mt-stack mt-minutes-view' },
         h(SplitLegacyPanel,{key:targetId,meetingId:targetId,locked:contextBusy||dirty,showToast,onLatest:async id=>{if(splitLatestRef.current?.blocked)return;const owner=targetId,seq=++minuteLoadSeq.current;try{const data=await request('/minutes/'+encodeURIComponent(id));if(splitLatestRef.current?.targetId===owner&&!splitLatestRef.current?.blocked&&seq===minuteLoadSeq.current&&data.minutes?.meeting_id===owner){setMinutes(data.minutes);setDraft(null);setEditing(false)}}catch(error){if(splitLatestRef.current?.targetId===owner)showToast(error.message,'error')}}}),
-        h('div', { className: 'mt-card mt-context' },
-          h('label', { className: 'mt-field' }, '会议绑定（可选：不绑定则生成独立纪要；绑定后纪要关联该场会议）', h('select', { className: 'mt-select', value: targetId, disabled: contextLocked, title: audioUrl ? '保留录音的会议绑定已锁定；请先下载并放弃录音再改绑' : contextBusy ? '任务处理中，暂不能改绑' : '', onChange: event => changeMeeting(event.target.value) }, h('option', { value: '' }, '不绑定会议 / 独立录音纪要'), meetings.map(item => h('option', { value: item.id, key: item.id }, item.title + '（' + fmtDay(item.start_time) + '）')))),
-          h('label', { className: 'mt-field' }, '纪要模板', h('select', { className:'mt-select', value:template, disabled:contextLocked || templateCatalog.state!=='ready', onChange:event=>setTemplate(event.target.value) }, templateCatalog.rows.map(item=>h('option',{key:item.id,value:item.id},item.name)))),
-          h('div', { className:'mt-field' }, h('span', null, '上传Word模板（仅本次）'),
-            h('div', {className:'mt-word-pick035'}, h('button',{className:'mt-btn small',disabled:contextBusy,onClick:()=>wordInput.current?.click()},wordBusy?'验证中…':'选择文件'),
-              h('span',{className:'mt-chip',title:wordTemplate?.name || '未选择文件'},wordTemplate?.name || '未选择文件'),wordTemplate?h('button',{className:'mt-btn small',disabled:contextBusy,onClick:removeWordTemplate,'aria-label':'移除本次Word模板'},'移除'):null),
-            h('input',{ref:wordInput,type:'file',accept:'.docx',style:{display:'none'},onChange:pickWordTemplate}),
-            h('span',{className:'mt-muted'},'成功生成后消费一次；人工编辑／导出不会消费模板。')),
-          h('div', { className:'mt-row mt-context-status035' }, MinutesPill({value:statusValue,t}),h('button',{className:'mt-btn small',disabled:contextBusy,onClick:refreshCatalogs},'刷新模板 / 模型')),
-          templateCatalog.state !== 'ready' ? h('div', { className: 'mt-notice' }, templateCatalog.state === 'loading' ? '模板加载中…' : '真实模板加载失败，请重试。') : null,
-        ),
         h('section', { className: 'mt-card mt-stack', 'aria-label': '纪要来源' },
           h('div', { className: 'mt-seg mt-source-tabs', role: 'tablist' }, [['live', '🎙 实时录音'], ['upload', '📁 上传录音'], ['paste', '⌨ 粘贴文本']].map(([id, label]) => h('button', { key: id, 'aria-pressed': srcMode === id, disabled: contextBusy && !recording && !liveStarting, onClick: () => switchSrc(id) }, label))),
           srcMode === 'live' ? livePanel : null,
           srcMode === 'upload' ? h('div', { className: 'mt-stack' }, uploadPanel, h('div', { className: 'mt-row mt-between' }, h(TaskModelPicker, { catalog: modelCatalog, value: taskModel, onChange: setTaskModel, disabled: contextBusy }), h('button', { className: 'mt-btn primary', disabled: !uploadRec || contextBusy || !templateReady, onClick: generateUpload }, upBusy ? upStage || '正在处理…' : '✦ ' + t.generateBtn))) : null,
           srcMode === 'paste' ? pastePanel : null,
+          genConfig035,
         ),
         generationProgress035 ? h("div",{className:"mt-notice",role:"status"},generationProgress035.label,
           generationActive035 && generationProgress035.progress?.phase !== "committing" ? h("button",{className:"mt-btn small",onClick:()=>generationAbort035.current?.abort()},"取消纪要处理（保留录音与转写）") : null,
           !generationActive035 && generationProgress035.task_id && ["interrupted","cancelled","unresolved"].includes(generationProgress035.state) ? h("button",{className:"mt-btn small",disabled:contextBusy,onClick:resumeGeneration035},"恢复上次任务") : null,
           !generationActive035 && generationProgress035.state==="unresolved" ? h("button",{className:"mt-btn small",onClick:()=>inspectGrounding035(generationProgress035.task_id)},"查看待审核验清单") : null,
           generationProgress035.task_id ? h("div",{className:"mt-muted"},"任务参考："+generationProgress035.task_id) : null) : null,
-        h('section', { className: 'mt-card mt-stack mt-preview', 'aria-label': '纪要概览' },
+        minutes ? h('section', { className: 'mt-card mt-stack mt-preview', ref: previewRef035, 'aria-label': '纪要概览' },
           h('div', { className: 'mt-row mt-between' },
             h('div', { className: 'mt-row' }, h('h3', { className: 'mt-h3' }, '纪要概览'), minutes ? h('span', { className: 'mt-pill gray' }, t.versionLabel(minutes.version || 1)) : null, minutes ? h('span', { className: 'mt-pill blue' }, sourceLabel[minutes.source] || t.sourceAi) : null),
             h('div', { className: 'mt-minute-tools' },
@@ -2471,9 +2622,7 @@ function WordEditorPane({ minutes, onSaved, onState, apiRef }) {
               h('input', { ref: impRef, type: 'file', accept: '.txt,.md,.markdown', style: { display: 'none' }, onChange: event => importFile(event, 'import') }),
             ),
           ),
-          minuteLoad === 'loading' ? h('div', { className: 'mt-muted', role: 'status' }, '正在加载该会议纪要…') : null,
-          minuteLoad === 'error' ? h('div', { className: 'mt-notice' }, '纪要读取失败，不代表无记录。', h('button', { className: 'mt-btn small', onClick: () => loadMinutes(targetId) }, '重试')) : null,
-          minutes ? h('div', { className: 'mt-stack' },
+          h('div', { className: 'mt-stack' },
             minutes.is_archived && minutes.archive_fingerprint ? h('div', { className: 'mt-stack' }, h('span', { className: 'mt-pill green' }, '🔐 正式归档指纹'), h('div', { className: 'mt-fp' }, minutes.archive_fingerprint)) : null,
             h(WordEditorPane, { key:minutes.minutes_id + ':' + Boolean(minutes.is_archived), minutes, apiRef:nativeWordApi, onState:setNativeWordState,
               onSaved: saved => { setMinutes(saved); setDraft(null); setEditing(false); refreshMeetings() } }),
@@ -2482,8 +2631,8 @@ function WordEditorPane({ minutes, onSaved, onState, apiRef }) {
             minutes.grounding ? h('div', {className:'mt-notice',role:'note'}, minutes.grounding.notice, h('button',{className:'mt-btn small',disabled:contextBusy,onClick:()=>inspectGrounding035()},'查看完整原文与生成时核验清单')) : null,
             minutes.generation_model ? h('div', { className: 'mt-muted' }, '实际生成模型：' + minutes.generation_model.provider + ' / ' + minutes.generation_model.model) : null,
             h('details', null, h('summary', null, '版本历史'), h('div', { className: 'mt-muted' }, (minutes.history || []).map((row, index) => h('div', { key: index }, 'v' + row.version + ' · ' + row.source + ' · ' + row.saved_at)))),
-          ) : h('div', { className: 'mt-empty' }, h('b', null, t.noMinutes), h('p', null, '从上方选择来源并显式生成；无内容时操作保持禁用。')),
-        ),
+          ),
+        ) : minutesFallback035,
         groundingView035 && (groundingView035.owner === "minutes:"+minutes?.minutes_id || groundingView035.owner === "task:"+generationProgress035?.task_id) ? h("section",{className:"mt-card mt-stack","aria-label":"原文与覆盖核验审阅"},
           h("h3",{className:"mt-h3"},"原文与覆盖核验审阅"),h("div",{className:"mt-notice"},"清单针对生成时的草稿，不证明后续人工修改仍覆盖全部事实；自动核验不是人工语义认证。"),
           groundingView035.loading ? h("div",{role:"status"},"正在检查原文哈希并读取清单…") : null,
@@ -4158,6 +4307,11 @@ h('div', { className: 'mt-inputbar' },
       const [qaSessions, setQaSessions] = useState([])
       const [qaSessionsState, setQaSessionsState] = useState('loading')
       const [qaActiveId, setQaActiveId] = useState('')
+      /* mtHist-20261019：历史对话「更多操作」（置顶/重命名/归档/删除）+ 归档视图开关。 */
+      const [qaSessionMenu, setQaSessionMenu] = useState(null) // { session, anchor }
+      const [qaRenaming, setQaRenaming] = useState(null) // { id, value } 行内重命名
+      const [qaShowArchived, setQaShowArchived] = useState(false) // 历史区：false=历史对话 / true=归档对话
+      const qaMenuRef = useRef(null)
       const [docCount, setDocCount] = useState(null) // 实际已挂载文档数，失败未知
       const [health, setHealth] = useState(null)
       const [meetingState, setMeetingState] = useState('loading')
@@ -4245,6 +4399,100 @@ h('div', { className: 'mt-inputbar' },
           showToast(`${t.requestFailed}: ${e.message}`, 'error')
         }
       }, [qaActiveId, t.deleteSessionFirst, t.requestFailed, showToast])
+
+      /* ================= mtHist-20261019：历史对话「更多操作」 =================
+         与知识库插件（dsh-raganything-kb）历史对话一致：置顶 / 重命名 / 归档 / 删除。
+         服务端真源为 PUT /qa-sessions/:id；本地列表按「置顶优先 + 更新时间倒序」重排。 */
+      const sortQaSessions = useCallback((list) => [...list].sort((a, b) =>
+        (Number(b.pinned === true) - Number(a.pinned === true))
+        || String(b.updated_at || '').localeCompare(String(a.updated_at || ''))), [])
+
+      const qaMenuStyle = useCallback((anchor) => {
+        const width = 156, height = 4 * 34 + 12
+        let left = 12, top = 120
+        try {
+          if (anchor && typeof anchor.getBoundingClientRect === 'function') {
+            const r = anchor.getBoundingClientRect()
+            const vw = window.innerWidth || 1024
+            const vh = window.innerHeight || 768
+            left = Math.max(8, Math.min(r.left, vw - width - 8))
+            top = r.bottom + 6
+            if (top + height > vh - 8) top = Math.max(8, r.top - height - 6)
+          }
+        } catch { /* 退化到默认坐标 */ }
+        return { position: 'fixed', left, top, width, zIndex: 80 }
+      }, [])
+
+      /* 菜单外点击 / Esc / 滚动即关闭（fixed 定位菜单不随容器裁剪，行为与知识库一致） */
+      useEffect(() => {
+        if (!qaSessionMenu) return undefined
+        const close = (ev) => {
+          if (qaMenuRef.current && ev.target && qaMenuRef.current.contains(ev.target)) return
+          setQaSessionMenu(null)
+        }
+        const onKey = (ev) => { if (!ev || ev.key === 'Escape') setQaSessionMenu(null) }
+        document.addEventListener('mousedown', close, true)
+        document.addEventListener('keydown', onKey)
+        window.addEventListener('resize', onKey)
+        window.addEventListener('scroll', onKey, true)
+        return () => {
+          document.removeEventListener('mousedown', close, true)
+          document.removeEventListener('keydown', onKey)
+          window.removeEventListener('resize', onKey)
+          window.removeEventListener('scroll', onKey, true)
+        }
+      }, [qaSessionMenu])
+
+      /* 只更新元数据（title/pinned/archived），消息体不动；服务端失败则不改本地。 */
+      const patchQaSession = useCallback(async (id, body) => {
+        const data = await request(`/qa-sessions/${encodeURIComponent(id)}`, put(body))
+        return data && data.session ? data.session : null
+      }, [])
+
+      const toggleQaPin = useCallback(async (session) => {
+        setQaSessionMenu(null)
+        const next = !(session.pinned === true)
+        try {
+          await patchQaSession(session.session_id, { pinned: next })
+          setQaSessions((list) => sortQaSessions(list.map((x) =>
+            x.session_id === session.session_id ? { ...x, pinned: next, updated_at: new Date().toISOString() } : x)))
+          showToast(next ? t.pinOk : t.unpinOk, 'success')
+        } catch (e) {
+          showToast(`${t.requestFailed}: ${e.message}`, 'error')
+        }
+      }, [patchQaSession, sortQaSessions, showToast, t.pinOk, t.requestFailed, t.unpinOk])
+
+      const toggleQaArchive = useCallback(async (session) => {
+        setQaSessionMenu(null)
+        const next = !(session.archived === true)
+        try {
+          await patchQaSession(session.session_id, { archived: next })
+          setQaSessions((list) => list.map((x) =>
+            x.session_id === session.session_id ? { ...x, archived: next } : x))
+          if (next && qaActiveId === session.session_id) {
+            setQaActiveId('')
+            setAskSeed({ reset: true, nonce: ++navigationSeqRef.current })
+          }
+          showToast(next ? t.archiveOk : t.unarchiveOk, 'info')
+        } catch (e) {
+          showToast(`${t.requestFailed}: ${e.message}`, 'error')
+        }
+      }, [patchQaSession, qaActiveId, showToast, t.archiveOk, t.requestFailed, t.unarchiveOk])
+
+      const commitQaRename = useCallback(async (id, value) => {
+        const title = String(value || '').trim().slice(0, 120)
+        setQaRenaming(null)
+        const cur = qaSessions.find((x) => x.session_id === id)
+        if (cur && (cur.title || '') === title) return
+        if (!title) { showToast(t.renameEmpty, 'error'); return }
+        try {
+          await patchQaSession(id, { title })
+          setQaSessions((list) => list.map((x) => (x.session_id === id ? { ...x, title } : x)))
+          showToast(t.renameOk, 'success')
+        } catch (e) {
+          showToast(`${t.requestFailed}: ${e.message}`, 'error')
+        }
+      }, [patchQaSession, qaSessions, showToast, t.renameEmpty, t.renameOk, t.requestFailed])
 
       // 统计卡：已索引文档数（request('/docs') 取 count，失败显示 —）
       useEffect(() => {
@@ -4349,15 +4597,66 @@ h('div', { className: 'mt-inputbar' },
               h('span', { className: 'ic' }, h('span', { 'aria-hidden': true }, '＋'), h('span', { className: 'txt' }, '新增会话'))),
             h('section', { className: 'mt-railqa', 'aria-label': '会议问答历史会话' },
               qaSessionsState === 'error' ? h('button', { type: 'button', className: 'mt-railitem', onClick: refreshQaSessions }, '历史读取失败 · 重试') : null,
-              qaSessions.length ? qaSessions.map(session => h('div', { className: 'mt-railrow', key: session.session_id },
-                h('button', { type: 'button', className: 'mt-session' + (qaActiveId === session.session_id ? ' active' : ''),
-                  'aria-current': qaActiveId === session.session_id ? 'page' : undefined,
-                  title: session.title || session.session_id,
-                  onClick: async () => { if (await openQaSession(session)) setRailExpanded(false) } }, session.title || session.session_id),
-                h('button', { type: 'button', className: 'mt-railremove', title: '删除该历史对话',
-                  'aria-label': '删除历史会话：' + (session.title || '未命名会话'),
-                  onClick: () => { if (window.confirm('删除该会议问答历史？此操作不可恢复。')) removeQaSession(session.session_id) } }, '×'),
-              )) : h('p', { className: 'mt-muted' }, qaSessionsState === 'loading' ? '加载历史…' : qaSessionsState === 'error' ? '历史读取失败，请重试' : '暂无历史会话'),
+              (() => {
+                const archivedCount = qaSessions.filter(s => s.archived === true).length
+                const visible = qaSessions.filter(s => (s.archived === true) === qaShowArchived)
+                return [
+                  qaShowArchived ? h('button', { type: 'button', className: 'mt-archtoggle', key: 'arch-back',
+                    onClick: () => { setQaShowArchived(false); setQaSessionMenu(null) } }, '← ' + t.backToHistory) : null,
+                  visible.length ? visible.map(session => {
+                    const menuOpen = Boolean(qaSessionMenu && qaSessionMenu.session.session_id === session.session_id)
+                    const renaming = Boolean(qaRenaming && qaRenaming.id === session.session_id)
+                    return h('div', { className: 'mt-railrow', key: session.session_id },
+                      renaming
+                        ? h('input', {
+                            className: 'mt-reninput', autoFocus: true, value: qaRenaming.value,
+                            'aria-label': t.renameSession,
+                            onChange: (e) => setQaRenaming({ id: session.session_id, value: e.target.value }),
+                            onKeyDown: (e) => {
+                              if (e.key === 'Enter') { e.preventDefault(); void commitQaRename(session.session_id, qaRenaming.value) }
+                              if (e.key === 'Escape') { e.preventDefault(); setQaRenaming(null) }
+                            },
+                            onBlur: () => void commitQaRename(session.session_id, qaRenaming.value),
+                            onClick: (e) => e.stopPropagation(),
+                          })
+                        : h('button', { type: 'button', className: 'mt-session' + (qaActiveId === session.session_id ? ' active' : ''),
+                            'aria-current': qaActiveId === session.session_id ? 'page' : undefined,
+                            title: session.title || session.session_id,
+                            onClick: async () => { if (await openQaSession(session)) setRailExpanded(false) } },
+                            (session.pinned === true ? '📌 ' : '') + (session.title || session.session_id)),
+                      h('button', { type: 'button', className: 'mt-morebtn',
+                        title: t.moreActions, 'aria-label': t.moreActions,
+                        'aria-haspopup': 'menu', 'aria-expanded': menuOpen ? 'true' : 'false',
+                        onClick: (e) => {
+                          e.stopPropagation(); e.preventDefault()
+                          setQaSessionMenu(menuOpen ? null : { session, anchor: e.currentTarget })
+                        } }, '⋯'),
+                      menuOpen ? h('div', { ref: qaMenuRef, className: 'mt-sessionmenu', role: 'menu',
+                        style: qaMenuStyle(qaSessionMenu.anchor),
+                        onClick: (e) => e.stopPropagation() },
+                        h('button', { type: 'button', role: 'menuitem', onClick: () => void toggleQaPin(session) },
+                          (session.pinned === true ? '📌 ' : '📍 ') + (session.pinned === true ? t.unpinSession : t.pinSession)),
+                        h('button', { type: 'button', role: 'menuitem',
+                          onClick: () => { setQaRenaming({ id: session.session_id, value: session.title || '' }); setQaSessionMenu(null) } },
+                          '✎ ' + t.renameSession),
+                        h('button', { type: 'button', role: 'menuitem', onClick: () => void toggleQaArchive(session) },
+                          '🗄 ' + (session.archived === true ? t.unarchiveSession : t.archiveSession)),
+                        h('button', { type: 'button', role: 'menuitem', className: 'danger',
+                          onClick: () => {
+                            setQaSessionMenu(null)
+                            if (window.confirm(`删除对话「${session.title || '未命名会话'}」？此操作不可恢复。`)) void removeQaSession(session.session_id)
+                          } }, '🗑 ' + t.delSession),
+                      ) : null,
+                    )
+                  }) : h('p', { className: 'mt-muted' },
+                    qaSessionsState === 'loading' ? '加载历史…'
+                      : qaSessionsState === 'error' ? '历史读取失败，请重试'
+                        : (qaShowArchived ? t.noArchived : t.noSessions)),
+                  qaShowArchived ? null : h('button', { type: 'button', className: 'mt-archtoggle', key: 'arch-toggle',
+                    onClick: () => { setQaShowArchived(true); setQaSessionMenu(null) } },
+                    t.archivedChat + (archivedCount ? ' · ' + archivedCount : '')),
+                ].filter(Boolean)
+              })(),
             ),
           ) : null,
           ),

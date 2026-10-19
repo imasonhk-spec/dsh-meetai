@@ -2016,9 +2016,10 @@ function handleQaAbort(res, sessionId) {
 async function handleQaSessions(req, res, method, url, id) {
   if (method === 'GET' && !id) {
     const sessions = await loadQaSessions()
-    sessions.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
+    // mtHist-20261019：置顶会话优先，其余按更新时间倒序；pinned/archived 一并下发（历史对话「更多操作」）。
+    sessions.sort((a, b) => (Number(b.pinned === true) - Number(a.pinned === true)) || (b.updated_at || '').localeCompare(a.updated_at || ''))
     // mtBg-20261005：附 busy 标记（该会话是否仍在服务端生成），供客户端恢复「生成中」状态。
-    sendJson(res, { sessions: sessions.map((s) => ({ ...s, busy: qaBusySessions.has(s.session_id) })) })
+    sendJson(res, { sessions: sessions.map((s) => ({ ...s, pinned: s.pinned === true, archived: s.archived === true, busy: qaBusySessions.has(s.session_id) })) })
     return
   }
   if (method === 'GET' && id) {
@@ -2042,6 +2043,9 @@ async function handleQaSessions(req, res, method, url, id) {
       scope: parsed && typeof parsed.scope === 'string' ? parsed.scope : 'all',
       created_at: now,
       updated_at: now,
+      // mtHist-20261019：历史对话「更多操作」状态位（置顶 / 归档）。
+      pinned: false,
+      archived: false,
       messages: [],
     }
     const sessions = await loadQaSessions()
@@ -2061,6 +2065,9 @@ async function handleQaSessions(req, res, method, url, id) {
     if (parsed === undefined) return
     if (parsed && typeof parsed.title === 'string' && parsed.title.trim()) row.title = parsed.title.trim().slice(0, 120)
     if (parsed && typeof parsed.scope === 'string') row.scope = parsed.scope
+    // mtHist-20261019：置顶 / 归档（历史对话「更多操作」）；只接受布尔值，非法值忽略。
+    if (parsed && typeof parsed.pinned === 'boolean') row.pinned = parsed.pinned
+    if (parsed && typeof parsed.archived === 'boolean') row.archived = parsed.archived
     if (parsed && Array.isArray(parsed.messages)) {
       row.messages = parsed.messages
         .filter((m) => m && typeof m === 'object' && typeof m.content === 'string' && (m.role === 'user' || m.role === 'assistant'))
