@@ -602,11 +602,20 @@ const KB_COMPOSER_CSS = `
 .mt-app .mt-askdock .mt-inputbar>.mt-btn.primary{background:#4176e6}
 .mt-app .mt-askdock .mt-inputbar>.mt-btn.primary:hover:not(:disabled){background:#7aaaff}
 `
-const MEETING_CSS = scopeMeetingCss(CSS.replace(/html\[data-mt-resizing\],html\[data-mt-resizing\] \*\{[^}]*\}/, '') + CLOUD_CSS + FINAL_CLOUD_CSS + NAVIGATION_CSS + QA035_CSS + QA_INPUT_WIDTH_FIX_CSS + KB_COMPOSER_CSS)
+const LOCAL_MODELS_CSS = ".mt-railfoot{display:flex;gap:8px;margin:8px 10px 12px}\n.mt-railfoot>.mt-railback{margin:0;flex:1 1 0;min-width:0}\n.mt-models{display:flex;flex-direction:column;gap:12px}\n.mt-models-info{border:1px solid var(--dsw-alias-border-l2);background:linear-gradient(90deg,rgba(13,157,151,.09),transparent 65%);border-radius:13px;padding:10px 14px;display:flex;flex-direction:column;gap:6px}\n.mt-models-inforow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--dsw-alias-label-secondary)}\n.mt-models-count{margin-left:auto;display:inline-flex;align-items:center;gap:6px;color:var(--dsw-alias-label-secondary)}\n.mt-models-count b{color:#0d9d97;font-weight:650}\n.mt-models-dir{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--dsw-alias-label-secondary);word-break:break-all}\n.mt-models-card{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);border-radius:14px;padding:13px 15px}\n.mt-models-head{display:flex;align-items:center;gap:9px}\n.mt-models-icon{width:26px;height:26px;flex:none;display:grid;place-items:center;border-radius:8px;color:#0d9d97;background:rgba(13,157,151,.13)}\n.mt-models-name{color:var(--dsw-alias-label-primary);font-size:13.5px;font-weight:650}\n.mt-models-role{color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-3,rgba(127,127,127,.1));border-radius:999px;padding:2px 9px;font-size:11px}\n.mt-models-desc{color:var(--dsw-alias-label-secondary);margin:4px 0 8px;padding-left:35px;font-size:12px}\n.mt-models-meta{color:var(--dsw-alias-label-secondary);font-size:11.5px;padding-left:35px}\n.mt-models-actions{display:flex;align-items:center;gap:8px;margin-top:10px;padding-left:35px;flex-wrap:wrap}\n.mt-models-chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 10px;font-size:11.5px;font-weight:550}\n.mt-models-chip.ready{color:#059669;background:rgba(16,185,129,.12)}\n.mt-models-chip.ready:before{content:\"\";width:6px;height:6px;border-radius:50%;background:#10b981;box-shadow:0 0 0 2px rgba(16,185,129,.18)}\n.mt-models-chip.busy{color:#b45309;background:rgba(245,158,11,.14)}\n.mt-models-chip.busy:before{content:\"\";width:6px;height:6px;border-radius:50%;background:#f59e0b;animation:mtModelsPulse 1.1s ease-in-out infinite}\n.mt-models-chip.warn{color:#dc2626;background:rgba(220,38,38,.1)}\n@keyframes mtModelsPulse{0%,100%{opacity:1}50%{opacity:.35}}\n.mt-models-dl{border:0;border-radius:9px;height:30px;padding:0 13px;font-family:inherit;font-size:12px;font-weight:550;color:#fff;background:linear-gradient(135deg,var(--dsw-alias-state-business-primary,#1266e3),#0d9d97);cursor:pointer;display:inline-flex;align-items:center;gap:5px}\n.mt-models-dl:disabled{opacity:.45;cursor:default}\n.mt-models-progress{position:relative;height:18px;border-radius:9px;background:rgba(127,127,127,.15);overflow:hidden;margin:8px 0 0 35px}\n.mt-models-progressbar{position:absolute;inset:0 auto 0 0;width:0;border-radius:9px;background:linear-gradient(135deg,var(--dsw-alias-state-business-primary,#1266e3),#0d9d97);transition:width .3s}\n.mt-models-progresstext{position:absolute;inset:0;display:flex;align-items:center;padding:0 9px;font-size:10.5px;font-weight:550;color:var(--dsw-alias-label-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n.mt-models-error{color:#dc2626;font-size:11.5px;margin-top:6px;padding-left:35px;word-break:break-all}\n.mt-models-note{color:var(--dsw-alias-label-secondary);font-size:11.5px}"
+const MEETING_CSS = scopeMeetingCss(CSS.replace(/html\[data-mt-resizing\],html\[data-mt-resizing\] \*\{[^}]*\}/, '') + CLOUD_CSS + FINAL_CLOUD_CSS + NAVIGATION_CSS + QA035_CSS + QA_INPUT_WIDTH_FIX_CSS + KB_COMPOSER_CSS + LOCAL_MODELS_CSS)
 
     const dict = {
       zh: {
         title: '会议助手', subtitle: '会议日程与 AI 议程、模板纪要生成与签署归档、可溯源会议问答', back: '返回主页',
+        modelsBtn: '会议模型', modelsTitle: '会议模型', modelsLoading: '读取模型状态…',
+        modelsAsrState: 'ASR 依赖', modelsAsrReady: '已就绪', modelsAsrMissing: '未就绪',
+        modelsReadyCount: '已就绪', modelsStorage: '占用', modelsDir: '模型目录',
+        modelsAdminOnly: '会议模型是全站共享资产，只有管理员可以下载；你可以查看状态。',
+        modelsAdminOnlyShort: '仅管理员可下载',
+        modelsReady: '已就绪', modelsDownload: '下载', modelsRetry: '重试', modelsCancel: '取消',
+        modelsDownloading: '下载中', modelsDownloadFailed: '下载失败', modelsLoadFailed: '模型状态读取失败',
+        modelsRequestFailed: '操作失败，请重试', modelsSize: '体积', modelsFiles: '文件', modelsMissing: '缺失', modelsSource: '来源',
         brandSub: '企业级智能会议协同系统', brandTag: '智会', railSection: '工作台协同', aiAssistTag: 'AI辅助',
         statTitle: 'AI 助手状态', statOnline: '在线', statTodayMeetings: '今日待开会议', statPendingMinutes: '待归档纪要', statIndexedDocs: '已索引文档',
         unitMeetings: (n) => `${n} 场`, unitFiles: (n) => `${n} 份`, unitDocs: (n) => `${n} 篇`,
@@ -665,6 +674,14 @@ const MEETING_CSS = scopeMeetingCss(CSS.replace(/html\[data-mt-resizing\],html\[
       },
       en: {
         title: 'Meeting Assistant', subtitle: 'Schedules & AI agendas, template minutes with signing & archiving, traceable meeting Q&A', back: 'Back to Home',
+        modelsBtn: 'Meeting models', modelsTitle: 'Meeting models', modelsLoading: 'Reading model status…',
+        modelsAsrState: 'ASR dependency', modelsAsrReady: 'Ready', modelsAsrMissing: 'Not ready',
+        modelsReadyCount: 'Ready', modelsStorage: 'On disk', modelsDir: 'Model directory',
+        modelsAdminOnly: 'Meeting models are shared assets; only administrators can download. You can view their status.',
+        modelsAdminOnlyShort: 'Administrators only',
+        modelsReady: 'Ready', modelsDownload: 'Download', modelsRetry: 'Retry', modelsCancel: 'Cancel',
+        modelsDownloading: 'Downloading', modelsDownloadFailed: 'Download failed', modelsLoadFailed: 'Could not read model status',
+        modelsRequestFailed: 'The operation failed, please retry', modelsSize: 'Size', modelsFiles: 'Files', modelsMissing: 'Missing', modelsSource: 'Source',
         brandSub: 'Enterprise intelligent meeting suite', brandTag: 'Smart', railSection: 'Workspace', aiAssistTag: 'AI assist',
         statTitle: 'AI assistant', statOnline: 'Online', statTodayMeetings: 'Meetings today', statPendingMinutes: 'Minutes to sign', statIndexedDocs: 'Indexed docs',
         unitMeetings: (n) => `${n}`, unitFiles: (n) => `${n}`, unitDocs: (n) => `${n}`,
@@ -1114,6 +1131,138 @@ async function generateWithProgress035(body, { signal, onProgress, resumeTaskId 
     /* 详情弹窗                                                           */
     /* ---------------------------------------------------------------- */
 
+    /**
+     * 「会议模型」弹窗：把会议转写依赖的四个本地 ASR 模型（paraformer / vad /
+     * punc / cam++）以「手动下载」方式呈现——缺哪个点哪个，服务端从 ModelScope
+     * 拉取并落盘。视觉与知识库「AI 模型」对齐（信息行 + 卡片 + 就绪徽标 + 条纹
+     * 进度条），但代码独立，不复用 KB 的样式类与组件，避免两个插件互相耦合。
+     *
+     * 只呈现可验证的事实：状态一律来自服务端对「文件存在、非软链、字节数与锁定
+     * 值一致」的核对；转写推理能力不做任何声明。
+     */
+    function LocalModelsModal({ t, onClose }) {
+      const [snap, setSnap] = useState(null)
+      const [state, setState] = useState('loading')
+      const [error, setError] = useState(null)
+      const [busyId, setBusyId] = useState(null)
+      const [notice, setNotice] = useState(null)
+      const timerRef = useRef(null)
+
+      const load = useCallback(async (silent) => {
+        if (!silent) setState('loading')
+        try {
+          const data = await request('/models/local')
+          setSnap(data)
+          setState('ready')
+          setError(null)
+        } catch (err) {
+          setState('error')
+          if (!silent) setError(err.message || '')
+        }
+      }, [])
+
+      useEffect(() => { void load(false) }, [load])
+
+      const models = (snap && Array.isArray(snap.models)) ? snap.models : []
+      const downloading = models.some(m => m.download && (m.download.status === 'queued' || m.download.status === 'downloading' || m.download.status === 'verifying'))
+
+      useEffect(() => {
+        if (!downloading) {
+          if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+          return undefined
+        }
+        timerRef.current = window.setInterval(() => { void load(true) }, 1200)
+        return () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null } }
+      }, [downloading, load])
+
+      const post = async (route, id) => {
+        setBusyId(id)
+        setNotice(null)
+        try {
+          await request(route, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
+          await load(true)
+        } catch (err) {
+          setNotice(err.message || t.modelsRequestFailed)
+        } finally {
+          setBusyId(null)
+        }
+      }
+
+      const fmt = (bytes) => {
+        const n = Number(bytes) || 0
+        if (n >= 1073741824) return (n / 1073741824).toFixed(2) + ' GB'
+        if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB'
+        if (n >= 1024) return (n / 1024).toFixed(1) + ' KB'
+        return n + ' B'
+      }
+
+      const children = []
+      if (notice) children.push(h('div', { className: 'mt-notice', key: 'notice' }, notice))
+      if (state === 'loading' && !snap) {
+        children.push(h('p', { className: 'mt-muted', key: 'loading' }, t.modelsLoading))
+      } else if (state === 'error' && !snap) {
+        children.push(h('div', { className: 'mt-models', key: 'failed' },
+          h('p', { className: 'mt-notice' }, t.modelsLoadFailed + (error ? '：' + error : '')),
+          h('button', { className: 'mt-btn small', onClick: () => void load(false) }, t.modelsRetry),
+        ))
+      } else if (snap) {
+        children.push(h('div', { className: 'mt-models', key: 'body' },
+          h('div', { className: 'mt-models-info' },
+            h('div', { className: 'mt-models-inforow' },
+              h('span', null, t.modelsAsrState + '：'),
+              h('span', { className: 'mt-models-chip ' + (snap.asr.state === 'available' ? 'ready' : 'warn') }, snap.asr.state === 'available' ? t.modelsAsrReady : t.modelsAsrMissing),
+              h('span', { className: 'mt-models-note' }, snap.asr.note),
+              h('span', { className: 'mt-models-count' },
+                t.modelsReadyCount + ' ', h('b', null, snap.counts.ready + '/' + snap.counts.total),
+                ' · ', t.modelsStorage + ' ', h('b', null, fmt(snap.counts.bytesTotal)),
+              ),
+            ),
+            h('div', { className: 'mt-models-dir' }, t.modelsDir + '：' + (snap.modelsDir || snap.modelsDirLabel)),
+            snap.canDownload ? null : h('div', { className: 'mt-models-note' }, t.modelsAdminOnly),
+          ),
+          ...models.map((m) => {
+            const dl = m.download
+            const busy = Boolean(dl) && (dl.status === 'queued' || dl.status === 'downloading' || dl.status === 'verifying')
+            const failed = Boolean(dl) && dl.status === 'error'
+            const cancelled = Boolean(dl) && dl.status === 'cancelled'
+            const actions = []
+            if (m.status === 'ready') {
+              actions.push(h('span', { className: 'mt-models-chip ready', key: 'ready' }, t.modelsReady))
+            } else if (busy) {
+              actions.push(h('span', { className: 'mt-models-chip busy', key: 'busy' }, t.modelsDownloading))
+              if (snap.canDownload) actions.push(h('button', { className: 'mt-btn ghost small', key: 'cancel', disabled: busyId === m.id, onClick: () => void post('/models/local/cancel', m.id) }, t.modelsCancel))
+            } else if (snap.canDownload) {
+              actions.push(h('button', { className: 'mt-models-dl', key: 'dl', disabled: busyId === m.id, onClick: () => void post('/models/local/download', m.id) }, (failed || cancelled) ? t.modelsRetry : t.modelsDownload))
+            } else {
+              actions.push(h('span', { className: 'mt-models-note', key: 'ro' }, t.modelsAdminOnlyShort))
+            }
+            return h('div', { className: 'mt-models-card', key: m.id },
+              h('div', { className: 'mt-models-head' },
+                h('span', { className: 'mt-models-icon', 'aria-hidden': true }, '🎙'),
+                h('span', { className: 'mt-models-name' }, m.name),
+                h('span', { className: 'mt-models-role' }, m.role),
+              ),
+              h('div', { className: 'mt-models-desc' }, m.desc),
+              h('div', { className: 'mt-models-meta' },
+                t.modelsSize + ' ' + fmt(m.sizeTotal) + ' · ' + t.modelsFiles + ' ' + m.okCount + '/' + m.fileCount,
+                m.status === 'partial' && m.missing.length ? ' · ' + t.modelsMissing + ' ' + m.missing.map(x => x.name).join('、') : '',
+              ),
+              h('div', { className: 'mt-models-actions' }, actions),
+              busy ? h('div', { className: 'mt-models-progress', role: 'progressbar', 'aria-valuenow': Math.round(dl.pct || 0), 'aria-valuemin': 0, 'aria-valuemax': 100 },
+                h('div', { className: 'mt-models-progressbar', style: { width: Math.min(100, dl.pct || 0) + '%' } }),
+                h('span', { className: 'mt-models-progresstext' },
+                  t.modelsDownloading + ' ' + Math.round(dl.pct || 0) + '% · ' + fmt(dl.receivedBytes) + ' / ' + fmt(dl.totalBytes),
+                  dl.currentFile ? ' · ' + dl.currentFile : '',
+                ),
+              ) : null,
+              failed ? h('div', { className: 'mt-models-error' }, t.modelsDownloadFailed + '：' + (dl.error || '')) : null,
+              h('div', { className: 'mt-models-note', style: { paddingLeft: 35, marginTop: 4 } }, t.modelsSource + '：' + m.repo),
+            )
+          }),
+        ))
+      }
+      return h(Modal, { title: t.modelsTitle, wide: true, onClose }, children)
+    }
     function DetailModal({ t, meeting, onClose, gotoMinutes, gotoAsk }) {
       const [docs, setDocs] = useState([])
       useEffect(() => {
@@ -4260,6 +4409,7 @@ h('div', { className: 'mt-inputbar' },
       const [loading, setLoading] = useState(true)
       const [toasts, setToasts] = useState([])
       const [detail, setDetail] = useState(null)
+      const [modelsOpen, setModelsOpen] = useState(false)
       const [minutesSeed, setMinutesSeed] = useState(null)
       const [askSeed, setAskSeed] = useState(null)
       // Compact meeting-owned rail; never mutate the DSH global sidebar.
@@ -4660,7 +4810,10 @@ h('div', { className: 'mt-inputbar' },
             ),
           ) : null,
           ),
-          h('button', { type: 'button', className: 'mt-railback', onClick: goBack, title: '返回主页', 'aria-label': '返回主页' }, '↩ ', h('span', { className: 'txt' }, '返回主页')),
+          h('div', { className: 'mt-railfoot' },
+            h('button', { type: 'button', className: 'mt-railback', onClick: goBack, title: '返回主页', 'aria-label': '返回主页' }, '↩ ', h('span', { className: 'txt' }, '返回主页')),
+            h('button', { type: 'button', className: 'mt-railback', onClick: () => setModelsOpen(true), title: t.modelsBtn, 'aria-label': t.modelsBtn }, '🧠 ', h('span', { className: 'txt' }, t.modelsBtn)),
+          ),
         ),
         h('div', { className: 'mt-stage' },
         h('header', { className: 'mt-topbar' },
@@ -4694,6 +4847,7 @@ h('div', { className: 'mt-inputbar' },
         ),
         ),
         detail ? h(DetailModal, { t, meeting: detail, onClose: () => setDetail(null), gotoMinutes, gotoAsk: (m) => gotoAsk(m, t.detailJumpAsk(m.title)) }) : null,
+        modelsOpen ? h(LocalModelsModal, { t, onClose: () => setModelsOpen(false) }) : null,
         h(Toasts, { toasts }),
       )
     }

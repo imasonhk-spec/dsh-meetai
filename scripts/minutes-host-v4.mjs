@@ -2,6 +2,7 @@ import { apply as mount, inject, handleGenerateText, getWordRuntime, ensureMinut
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { mountLocalCaptions } from './local-captions.mjs'
+import { mountLocalModels } from './local-models-v1.mjs'
 import { mountWordDocuments } from './word-documents.mjs'
 import { mountWordEditor } from './word-editor.mjs'
 export { inject }
@@ -12,6 +13,7 @@ export function apply(ctx) {
   const cleanup = [dispose]
   try {
     cleanup.push(mountLocalCaptions(ctx))
+    cleanup.push(mountLocalModels(ctx))
     cleanup.push(mountWordDocuments(ctx, getWordRuntime(ctx), { ensureForMinutes: (id, signal) => ensureMinutesWord(ctx, id, signal) }))
     cleanup.push(mountWordEditor(ctx, { getMinutes: (id, signal) => readEditorMinutes(ctx, id, signal), commitMinutes: (id, options) => commitEditorMinutes(ctx, id, options), getRuntime: () => getWordRuntime(ctx) }))
     cleanup.push(ctx.webServer.register({ kind:'exact', path:'/api/meeting-assistant/generate-text', async handler(req,res) {
