@@ -4410,6 +4410,16 @@ h('div', { className: 'mt-inputbar' },
       const [toasts, setToasts] = useState([])
       const [detail, setDetail] = useState(null)
       const [modelsOpen, setModelsOpen] = useState(false)
+      // mtModelsEntry-20261022：会议模型是管理员资产（下载/模型目录仅管理员），入口也只给管理员。
+      // 身份以服务端 /models/local 的 canDownload 为准（宿主实例=操作者本人 → true；普通账号 → false）。
+      const [modelsEntryAllowed, setModelsEntryAllowed] = useState(false)
+      useEffect(() => {
+        let live = true
+        request('/models/local').then((snap) => {
+          if (live) setModelsEntryAllowed(Boolean(snap && snap.canDownload === true))
+        }).catch(() => { if (live) setModelsEntryAllowed(false) })
+        return () => { live = false }
+      }, [])
       const [minutesSeed, setMinutesSeed] = useState(null)
       const [askSeed, setAskSeed] = useState(null)
       // Compact meeting-owned rail; never mutate the DSH global sidebar.
@@ -4812,7 +4822,7 @@ h('div', { className: 'mt-inputbar' },
           ),
           h('div', { className: 'mt-railfoot' },
             h('button', { type: 'button', className: 'mt-railback', onClick: goBack, title: '返回主页', 'aria-label': '返回主页' }, '↩ ', h('span', { className: 'txt' }, '返回主页')),
-            h('button', { type: 'button', className: 'mt-railback', onClick: () => setModelsOpen(true), title: t.modelsBtn, 'aria-label': t.modelsBtn }, '🧠 ', h('span', { className: 'txt' }, t.modelsBtn)),
+            modelsEntryAllowed ? h('button', { type: 'button', className: 'mt-railback', onClick: () => setModelsOpen(true), title: t.modelsBtn, 'aria-label': t.modelsBtn }, '🧠 ', h('span', { className: 'txt' }, t.modelsBtn)) : null,
           ),
         ),
         h('div', { className: 'mt-stage' },
