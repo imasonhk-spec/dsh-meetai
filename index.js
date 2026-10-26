@@ -50,6 +50,7 @@ import { createGenerationTasks } from './scripts/grounded-minutes/tasks.mjs'
 import { loadGroundingBundle } from './scripts/grounded-minutes/reports.mjs'
 
 /** 声明依赖：cordis 等待并注入 webServer / tools / agents / agentDefaultModel。 */
+import { installLicense } from './license-http.mjs'; /* PATCH:V5-o2pack-import */
 export const inject = ['webServer', 'tools', 'agents', 'agentDefaultModel']
 
 /* ------------------------------------------------------------------ */
@@ -3126,6 +3127,11 @@ const MANIFEST = {
 
 export function apply(ctx) {
   const disposers = []
+
+  /* PATCH:V5-o2pack-apply */
+  // 授权门禁：本插件自带授权运行时，不依赖工作台；apply 阶段绝不 throw
+  const __lic = installLicense(ctx, { pluginId: 'meeting', prefix: '/api/meeting-assistant' });
+  try { disposers.push(() => { try { __lic.gate.flush(); } catch {} }); } catch {}
   const taskRoot = path.join(dataRoot(), 'grounded-minutes', 'job-store')
   disposers.push(() => { const manager=generationManagers.get(taskRoot); generationManagers.delete(taskRoot); manager?.close().catch(()=>{}) })
   // 0. 记录宿主上下文（供 GET /models 读取 llm 注册表与默认模型；卸载置空）
@@ -3189,14 +3195,17 @@ export function apply(ctx) {
         ws.register({
           kind: 'prefix',
           path: BASE,
-          handler: (req, res) =>
+          handler: (req, res) => {
+            if (__lic.intercept(req, res)) return; /* PATCH:V5-o2pack-guard */
+            return (
             handle(ctx, req, res).catch((err) => {
               try {
                 sendJson(res, { error: 'INTERNAL', reason: String((err && err.message) || err) })
               } catch {
                 /* 连接已关闭 */
               }
-            }),
+            }));
+          },
         }),
       )
     }
