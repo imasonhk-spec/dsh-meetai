@@ -17,6 +17,7 @@ export function apply(ctx) {
     cleanup.push(mountWordDocuments(ctx, getWordRuntime(ctx), { ensureForMinutes: (id, signal) => ensureMinutesWord(ctx, id, signal) }))
     cleanup.push(mountWordEditor(ctx, { getMinutes: (id, signal) => readEditorMinutes(ctx, id, signal), commitMinutes: (id, options) => commitEditorMinutes(ctx, id, options), getRuntime: () => getWordRuntime(ctx) }))
     cleanup.push(ctx.webServer.register({ kind:'exact', path:'/api/meeting-assistant/generate-text', async handler(req,res) {
+      { const L = globalThis.__DSH_LIC__ && globalThis.__DSH_LIC__['meeting']; if (L && L.guard(req, res)) return; } /* PATCH:V5-o2pack-guard */
       if (req.method !== 'POST') { res.writeHead(405); res.end(); return }
       const ac = new AbortController()
       const close = () => ac.abort()
@@ -30,6 +31,7 @@ export function apply(ctx) {
       } finally { res.removeListener('close',close); ac.abort() }
     }}))
     cleanup.push(ctx.webServer.register({kind:'exact',path:'/api/meeting-assistant/minutes-model', async handler(req,res) {
+      { const L = globalThis.__DSH_LIC__ && globalThis.__DSH_LIC__['meeting']; if (L && L.guard(req, res)) return; } /* PATCH:V5-o2pack-guard */
       if (req.method !== 'GET') { res.writeHead(405); res.end(); return }
       let config
       try { config=JSON.parse(await readFile(path.join(process.env.DSH_HOME,'meeting-assistant/settings.json'),'utf8')) }

@@ -3196,7 +3196,7 @@ export function apply(ctx) {
           kind: 'prefix',
           path: BASE,
           handler: (req, res) => {
-            if (__lic.intercept(req, res)) return; /* PATCH:V5-o2pack-guard */
+            if (__lic.guard(req, res)) return; /* PATCH:V5-o2pack-guard */
             return (
             handle(ctx, req, res).catch((err) => {
               try {
