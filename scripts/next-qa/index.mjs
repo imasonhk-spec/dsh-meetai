@@ -31,7 +31,7 @@ function targetView(target) {
   return out
 }
 const sourceView = source => {
-  if (!source || !/^S(?:[1-9]|1[0-2])$/.test(source.id || '')) throw bad('QA_SOURCE_INVALID', 'retrieval')
+  if (!source || !/^S[1-9][0-9]*$/.test(source.id || '')) throw bad('QA_SOURCE_INVALID', 'retrieval')
   return { id: source.id, title: publicText(source.title, 240), section: publicText(source.section || '', 160), target: targetView(source.target) }
 }
 export const QA_SYSTEM = `你是服务机关日常会议与协调工作的助手，中文自然、专业、温和。简单问题直接回答；用户焦急时简短理解后给可行下一步。会议事实、未决事项和助手建议分别表达，不替机关作决定，不自称领导。没有资料支持的人名、数字、日期、政策条款不得编造；政策依据不足时说明资料不足，不进行联网核验。
@@ -73,9 +73,13 @@ export function createRestrictedQa({ llm, resolveLocalModel, authorize, retrieve
     if (!resolved || JSON.stringify(targetView(resolved)) !== JSON.stringify(source.target)) throw bad('QA_NOT_FOUND', 'authorization', 404)
     return source
   }
-  async function ask({ meetingId, question, signal } = {}) {
+  async function ask({ meetingId, meetingIds, question, signal } = {}) {
     if (typeof question !== 'string' || !question.trim() || question.length > 4000) throw bad('QA_REQUEST_INVALID', 'qa', 400)
     const scope = await scopeFor(meetingId)
+    if (meetingIds !== undefined) {
+      if (scope.meetingId !== null || !Array.isArray(meetingIds) || meetingIds.some(id => !scope.meetingIds.includes(id))) throw bad('QA_NOT_FOUND', 'authorization', 404)
+      scope.meetingIds = [...new Set(meetingIds)]
+    }
     if (signal?.aborted) throw bad('QA_CANCELLED', 'qa', 409)
     const model = await resolveLocalModel({ signal })
     if (model?.provider !== fixedModel.provider || model?.model !== fixedModel.model) throw bad('MODEL_UNAVAILABLE', 'model', 503)
@@ -101,10 +105,15 @@ export function createRestrictedQa({ llm, resolveLocalModel, authorize, retrieve
       tools: [], temperature: 0, maxTokens: 1536, signal }
     // Conservative byte upper bound is an estimate, NOT a tokenizer. Host may supply
     // the unified measured request budget; never split/truncate facts here.
-    if (measureBudget) {
-      const budget = await measureBudget(options)
-      if (budget?.fits !== true) throw bad('QA_INPUT_BUDGET', 'planning')
-    } else if (Buffer.byteLength(JSON.stringify({ system: options.system, messages: options.messages, tools: [] }), 'utf8') + 1536 + 1024 > 8192) throw bad('QA_INPUT_BUDGET', 'planning')
+    while (true) {
+      const fits = measureBudget ? (await measureBudget(options))?.fits === true :
+        Buffer.byteLength(JSON.stringify({ system: options.system, messages: options.messages, tools: [] }), 'utf8') + 1536 + 1024 <= 8192
+      if (fits) break
+      if (data.length <= 1) throw bad('QA_INPUT_BUDGET', 'planning')
+      // Drop only lower-ranked whole fragments; never cut a fact or loosen the call budget.
+      registry.delete(data.pop().sourceId)
+      options.messages[0].content[0].text = JSON.stringify({ question, materials: data })
+    }
     let raw = '', finished = false
     try {
       for await (const chunk of llm.stream(options)) {
@@ -149,9 +158,20 @@ export function createRestrictedQa({ llm, resolveLocalModel, authorize, retrieve
     turns.set(qaTurnId, saved)
     return { text, sources, caveats, tone: 'professional_warm', qaTurnId, displayApproved: true }
   }
+  // Host-only deterministic list facts: no inference, every source is reauthorized.
+  async function facts({ text, sources }) {
+    approveDisplay(text)
+    const scope = await scopeFor(), approved = []
+    for (let i=0;i<sources.length;i++) approved.push(await recheckSource(scope,sourceView({...sources[i],id:`S${i+1}` })))
+    const qaTurnId=randomUUID(), saved={schemaVersion:1,qaTurnId,accountId:scope.accountId,meetingId:null,sources:approved,createdAt:new Date().toISOString(),expiresAt:Date.now()+turnTtlMs}
+    if(saveTurn) await saveTurn({scope,turn:saved})
+    prune();while(turns.size>=maxTurns)turns.delete(turns.keys().next().value)
+    turns.set(qaTurnId,saved)
+    return {text,sources:approved,caveats:[],qaTurnId,displayApproved:true}
+  }
   async function resolveSource({ meetingId, qaTurnId, sourceId, signal } = {}) {
     const scope = await scopeFor(meetingId)
-    if (!TURN_ID.test(qaTurnId || '') || !/^S(?:[1-9]|1[0-2])$/.test(sourceId || '')) throw bad('QA_NOT_FOUND', 'authorization', 404)
+    if (!TURN_ID.test(qaTurnId || '') || !/^S[1-9][0-9]*$/.test(sourceId || '')) throw bad('QA_NOT_FOUND', 'authorization', 404)
     prune()
     let turn = turns.get(qaTurnId)
     if (!turn && lookupSavedTurn) {
@@ -159,13 +179,13 @@ export function createRestrictedQa({ llm, resolveLocalModel, authorize, retrieve
     }
     if (!turn) throw bad('QA_SOURCE_EXPIRED', 'authorization', 410)
     if (turn.schemaVersion !== 1 || turn.qaTurnId !== qaTurnId || turn.accountId !== scope.accountId || normalizeMeeting(turn.meetingId) !== scope.meetingId ||
-      !Number.isFinite(turn.expiresAt) || turn.expiresAt <= Date.now() || !Array.isArray(turn.sources) || turn.sources.length > 12) throw bad('QA_SOURCE_EXPIRED', 'authorization', 410)
+      !Number.isFinite(turn.expiresAt) || turn.expiresAt <= Date.now() || !Array.isArray(turn.sources)) throw bad('QA_SOURCE_EXPIRED', 'authorization', 410)
     const found = turn.sources.find(source => source.id === sourceId)
     if (!found) throw bad('QA_NOT_FOUND', 'authorization', 404)
     const source = sourceView(found)
     return recheckSource(scope, source, signal)
   }
-  return { ask, resolveSource, clear() { turns.clear() } }
+  return { ask, facts, resolveSource, clear() { turns.clear() } }
 }
 
 /** Pure historical DISPLAY migration; never rewrites original audit messages and

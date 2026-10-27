@@ -1,5 +1,6 @@
 import {readFile,lstat} from 'node:fs/promises'
 import {createHash} from 'node:crypto'
+import {isDeepStrictEqual} from 'node:util'
 import {createEditorRegistry} from './word-editor-registry.mjs'
 import {editorError,signEditorToken,verifyEditorToken,requestNonce,downloadEditorDocument,checkSecret} from './word-editor-security.mjs'
 const PREFIX='/api/meeting-assistant/word-editor'
@@ -18,10 +19,28 @@ export async function loadEditorConfig(file=process.env.DSH_WORD_EDITOR_CONFIG){
 }
 function tokenFrom(req){const value=req.headers.authorization;return typeof value==='string'&&value.startsWith('Bearer ')?value.slice(7):''}
 export function verifyDocumentCallback(req,data,secret){
- const token=typeof data.token==='string'?data.token:tokenFrom(req),claims=verifyEditorToken(token,secret,{requireExpiry:false}),signed=claims.payload||claims
- for(const[key,value]of Object.entries(data))if(key!=='token'&&JSON.stringify(value)!==JSON.stringify(signed[key]))throw editorError('WORD_EDITOR_CALLBACK_SIGNATURE')
- if(typeof data.key!=='string'||!Number.isInteger(data.status))throw editorError('WORD_EDITOR_CALLBACK_INVALID',400)
- return data
+ const plain=value=>value&&Object.getPrototypeOf(value)===Object.prototype
+ if(!plain(data))throw editorError('WORD_EDITOR_CALLBACK_INVALID',400)
+ const headerToken=tokenFrom(req)
+ if(data.token!==undefined&&typeof data.token!=='string')throw editorError('WORD_EDITOR_CALLBACK_SIGNATURE')
+ // A token-only body is an official ONLYOFFICE callback format. Read the
+ // authenticated fields from the JWT; never fall back to unsigned fields.
+ const metadata=new Set(['exp','nbf','iat','iss','aud','sub','jti'])
+ const verified=token=>{
+  const claims=verifyEditorToken(token,secret,{requireExpiry:false})
+  const wrapped=Object.hasOwn(claims,'payload'),signed=wrapped?claims.payload:claims
+  if(!plain(signed))throw editorError('WORD_EDITOR_CALLBACK_SIGNATURE')
+  return Object.fromEntries(Object.entries(signed).filter(([key])=>wrapped||!metadata.has(key)))
+ }
+ const bodyToken=typeof data.token==='string'?data.token:null
+ const expected=verified(bodyToken??headerToken)
+ // Both JWTs must authenticate identical callback fields if both are present;
+ // their serialization and standard JWT metadata need not be identical.
+ if(bodyToken!==null&&headerToken&&!isDeepStrictEqual(verified(headerToken),expected))throw editorError('WORD_EDITOR_CALLBACK_SIGNATURE')
+ const actual=Object.fromEntries(Object.entries(data).filter(([key])=>key!=='token'))
+ if(!(bodyToken!==null&&Object.keys(actual).length===0)&&!isDeepStrictEqual(actual,expected))throw editorError('WORD_EDITOR_CALLBACK_SIGNATURE')
+ if(typeof expected.key!=='string'||!expected.key||!Number.isInteger(expected.status))throw editorError('WORD_EDITOR_CALLBACK_INVALID',400)
+ return expected
 }
 function sourceToken(cfg,session,scope){return signEditorToken({scope,sid:session.id,actor:session.actor,exp:Math.floor(session.expiresAt/1000)},cfg.capabilitySecret)}
 export function normalizedDownloadURL(value,cfg){

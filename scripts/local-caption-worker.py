@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 import sys
 
-RUNTIME = Path('/home/lgsj/Downloads/AI game/akun-meeting/akun-runtime')
+RUNTIME = Path('${DSH_HOME}/Downloads/AI game/akun-meeting/akun-runtime')
 MODELS = RUNTIME / 'release/models'
 REQUIRED = {
     'paraformer': ('config.yaml', 'model.pt', 'tokens.json', 'seg_dict', 'am.mvn'),

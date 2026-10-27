@@ -1,12 +1,12 @@
 {
   "name": "dsh-meetai",
-  "version": "0.3.14",
+  "version": "0.3.15",
   "private": true,
   "type": "module",
-  "description": "KB 同款输入框移植版：圆角卡片 + 工具条（附件/引用/模型/圆形发送）+ 文件夹拖拽；并修复附件按钮静默失效与受限问答拖拽冒泡",
-  "main": "./index-huiwen.js",
+  "description": "Admin简单确认永久删除会议及明确专属资产；保留普通文本纪要、Word模板导出、字幕及宿主修复",
+  "main": "./index-minutes-operational-v9.js",
   "exports": {
-    ".": "./index-huiwen.js",
+    ".": "./index-minutes-operational-v9.js",
     "./client": "./client.js",
     "./package.json": "./package.json"
   },
@@ -20,7 +20,16 @@
     "package.json",
     "THIRD_PARTY_NOTICES.md",
     "licenses/",
-    "index-huiwen.js"
+    "index-huiwen.js",
+    "index-minutes-operational-v1.js",
+    "index-minutes-operational-v2.js",
+    "index-minutes-operational-v3.js",
+    "index-minutes-operational-v4.js",
+    "index-minutes-operational-v5.js",
+    "index-minutes-operational-v6.js",
+    "index-minutes-operational-v7.js",
+    "index-minutes-operational-v8.js",
+    "index-minutes-operational-v9.js"
   ],
   "icon": "./icon.svg",
   "dsh": {
@@ -38,7 +47,7 @@
       "entryKey": "cap:meeting",
       "order": 10,
       "category": "协作效率",
-      "version": "v0.3.10-composer.1",
+      "version": "v0.3.15",
       "tags": [
         "会议日程",
         "纪要生成",

@@ -30,7 +30,7 @@ import { pipeline } from 'node:stream/promises'
 
 const BASE = '/api/meeting-assistant'
 const MODELS_DIR_ENV = 'DSH_AKUN_RELEASE'
-const MODELS_DIR_DEFAULT = '/home/lgsj/Downloads/AI game/akun-meeting/akun-runtime/release'
+const MODELS_DIR_DEFAULT = '${DSH_HOME}/Downloads/AI game/akun-meeting/akun-runtime/release'
 
 /** 与 transcribe.py REQUIRED_FILES 对齐的必需成员：缺一即「未就绪」。 */
 const PINNED = [

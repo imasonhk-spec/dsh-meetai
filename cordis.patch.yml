@@ -3,5 +3,5 @@
 # 不要在 profile patch 里再重复插入同名 id（重复 id 会导致 Loader 崩溃）。
 - insert:
     - id: meetai
-      name: ./scripts/minutes-host-v4.mjs
+      name: ./scripts/minutes-host-operational-v9-caption.mjs
       config: {}

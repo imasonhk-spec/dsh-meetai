@@ -1,4 +1,6 @@
 import fs from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import path from 'node:path';
 import os from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
@@ -85,12 +87,41 @@ export async function openJournal(root) {
     }
     if (pending.length) { await handle.truncate(validBytes); await handle.sync(); }
   } catch (error) { await handle.close(); await fs.rm(lockPath, { recursive: true }); throw error; }
+  const serialScope = new AsyncLocalStorage();
   let tail = Promise.resolve(), closed = false, closing = false, poisoned = false;
+  // Bind the snapshot to the writer's inode, refusing symlinks, hardlinks and
+  // concurrent changes. Read at explicit offsets: the append handle's cursor
+  // must not determine which historical bytes are inspected.
+  async function historySnapshot() {
+    const uncertain = () => assetError('ASSET_COMMIT_UNCERTAIN', '历史journal文件身份或内容已变化。', 503);
+    const same = (a, b) => ['dev','ino','size','mtimeNs','ctimeNs','nlink'].every(key => a[key] === b[key]);
+    let reader;
+    try {
+      const before = await fs.lstat(journalPath, {bigint:true});
+      if (!before.isFile() || before.nlink !== 1n) throw uncertain();
+      reader = await fs.open(journalPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+      const opened = await reader.stat({bigint:true});
+      const writer = await handle.stat({bigint:true});
+      if (!same(before, opened) || !same(opened, writer)) throw uncertain();
+      if (opened.size > 64n * 1024n * 1024n) throw assetError('ASSET_TRANSACTION_LIMIT', '历史journal记录超限。', 413);
+      const bytes = Buffer.alloc(Number(opened.size));
+      let offset = 0;
+      while (offset < bytes.length) {
+        const {bytesRead} = await reader.read(bytes, offset, bytes.length - offset, offset);
+        if (!bytesRead) throw uncertain();
+        offset += bytesRead;
+      }
+      if (!same(opened, await reader.stat({bigint:true})) || !same(opened, await fs.lstat(journalPath,{bigint:true})) || !same(opened, await handle.stat({bigint:true}))) throw uncertain();
+      return bytes;
+    } finally { await reader?.close(); }
+  }
   function serial(fn) {
     if (closing) return Promise.reject(assetError('ASSET_STORE_UNAVAILABLE', '资产存储正在关闭。', 503));
     const result = tail.then(async () => {
       if (closed || poisoned) throw assetError('ASSET_STORE_UNAVAILABLE', '资产存储已关闭或需恢复。', 503);
-      return fn();
+      const ticket = {active:true};
+      try { return await serialScope.run(ticket, fn); }
+      finally { ticket.active = false; }
     });
     tail = result.catch(() => {}); return result;
   }
@@ -137,6 +168,73 @@ export async function openJournal(root) {
     get(type, id) { return clone(tables.get(type)?.get(id)); },
     values(type) { return [...(tables.get(type)?.values() || [])].map(clone); },
     serial,
+    // Include all obsolete revisions and tombstones, not just the live tables.
+    // Callers use serial() to keep the snapshot stable against normal writers.
+    async history() {
+      const bytes = await historySnapshot();
+      if (bytes.length && bytes[bytes.length - 1] !== 10) throw assetError('ASSET_JOURNAL_CORRUPT', '历史关系记录不完整。', 503);
+      const entries = []; let expected = 0, previous = '0'.repeat(64);
+      for (const line of bytes.toString('utf8').split('\n').slice(0, -1)) {
+        let entry; try { entry = JSON.parse(line); } catch { throw assetError('ASSET_JOURNAL_CORRUPT', '历史关系记录无法读取。', 503); }
+        if (!entry || typeof entry !== 'object') throw assetError('ASSET_JOURNAL_CORRUPT', '历史关系记录校验失败。', 503);
+        const {hash,...body} = entry;
+        if (entry.revision !== ++expected || entry.previousHash !== previous || hash !== digest(canonical(body)) || !Array.isArray(entry.ops) || entry.ops.some(op => !validOperation(op))) throw assetError('ASSET_JOURNAL_CORRUPT', '历史关系记录校验失败。', 503);
+        entries.push(entry); previous = hash;
+      }
+      if (expected !== revision || previous !== previousHash) throw assetError('ASSET_COMMIT_UNCERTAIN', '历史关系与当前状态不一致。', 503);
+      return entries;
+    },
+    // Remove exact operation keys while keeping every retained revision and
+    // tombstone. Never replace history with a latest-state table snapshot.
+    async purgeHistory(entries, keys) {
+      const requireWriter = () => {
+        if (serialScope.getStore()?.active !== true) throw assetError('ASSET_HISTORY_WRITER_REQUIRED', '历史清理必须持有原写入队列。', 403);
+      };
+      requireWriter();
+      if (!Array.isArray(entries) || !(keys instanceof Set) || [...keys].some(key => typeof key !== 'string' || !/^[A-Za-z]+\/[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/.test(key))) throw assetError('ASSET_DELETE_INPUT_INVALID', '历史清理输入无效。', 400);
+      keys = new Set(keys); entries = clone(entries);
+      const current = await this.history();
+      if (canonical(current) !== canonical(entries)) throw assetError('ASSET_DELETE_INPUT_STALE', '历史清理输入已变化，请重新核验。', 409);
+      requireWriter();
+      const temporary = journalPath + '.compact-' + randomUUID();
+      let output, replaced = false, newHash = '0'.repeat(64);
+      try {
+        output = await fs.open(temporary, 'wx', 0o600);
+        const writeEntry = async body => {
+          newHash = digest(canonical(body));
+          const line = Buffer.from(JSON.stringify({...body,hash:newHash}) + '\n');
+          let offset = 0;
+          while (offset < line.length) {
+            const wrote = await output.write(line, offset, line.length - offset, null);
+            if (!wrote.bytesWritten) throw Error('compact write stalled');
+            offset += wrote.bytesWritten;
+          }
+        };
+        for (const entry of entries) {
+          const {hash:_oldHash,...body} = entry;
+          await writeEntry({...body,previousHash:newHash,ops:entry.ops.filter(op => !keys.has(op.type + '/' + op.id))});
+        }
+        // Expire old CAS/cursors without changing retained entity revisions.
+        await writeEntry({schemaVersion:1,revision:revision+1,previousHash:newHash,transactionId:randomUUID(),committedAt:new Date().toISOString(),ops:[]});
+        await output.sync(); await output.close(); output = null;
+        if (canonical(await this.history()) !== canonical(current)) throw assetError('ASSET_DELETE_INPUT_STALE', '历史清理输入已变化，请重新核验。', 409);
+        requireWriter();
+        await fs.rename(temporary, journalPath); replaced = true;
+        await handle.close(); handle = await fs.open(journalPath, 'a+', 0o600);
+        await syncDir(root);
+        for (const [type,rows] of tables) for (const id of rows.keys()) if (keys.has(type + '/' + id)) rows.delete(id);
+        previousHash = newHash; revision++;
+        return {revision,purgedKeys:keys.size};
+      } catch (error) {
+        if (replaced) {
+          poisoned = true;
+          // Recovery must read the replacement inode, not the unlinked writer.
+          try { await handle?.close().catch(() => {}); handle = await fs.open(journalPath, 'a+', 0o600); } catch {}
+        }
+        if (!replaced && ['ASSET_DELETE_INPUT_STALE','ASSET_HISTORY_WRITER_REQUIRED'].includes(error.code)) throw error;
+        throw Object.assign(assetError('ASSET_DELETE_INCOMPLETE', '会议历史物理清理未完成，可保留删除屏障后重试。', 503), {cause:error,retryable:true});
+      } finally { await output?.close().catch(() => {}); await fs.rm(temporary, {force:true}).catch(() => {}); }
+    },
     async append(ops) {
       if (!ops.length) return revision;
       const body = { schemaVersion: 1, revision: revision + 1, previousHash, transactionId: randomUUID(), committedAt: new Date().toISOString(), ops };
