@@ -6,9 +6,42 @@ import { prepareMinutesExecution } from './formal-minutes-models-v9/minutes-exec
 import { mountLocalCaptions } from './local-captions.mjs'
 import { mountWordDocuments } from './word-documents.mjs'
 import { mountWordEditor } from './word-editor.mjs'
+import { installLicense } from './license-http.mjs'; /* PATCH:WB-MEETAI-LIC */
 export { inject }
 // Fresh Host generation; the preserved legacy minute route is not a dev.6 acceptance claim.
 export function apply(ctx) {
+
+  /* PATCH:WB-MEETAI-LIC —— 授权收口（本入口原先完全没有授权，属绕过）
+     1) 装授权运行时，pluginId='meeting'，与官方 dsh-meetai 同前缀；
+     2) 包一层 webServer.register，让本实例后续注册的所有 handler 先过 guard；
+     3) 单独放行 /license/* 子路径（exact 路由不会命中它）。 */
+  const __lic = installLicense(ctx, { pluginId: 'meeting', prefix: '/api/meeting-assistant' });
+  let __licN = 0;
+  try {
+    const __ws = ctx.webServer || (ctx.get && ctx.get('webServer'));
+    if (__ws && typeof __ws.register === 'function') {
+      const __reg = __ws.register.bind(__ws);
+      try {
+        __reg({ kind: 'prefix', path: '/api/meeting-assistant/license', handler(req, res) {
+          __lic.handle(req, res).catch(() => { try { res.writeHead(500); res.end(); } catch {} });
+        } });
+      } catch {}
+      __ws.register = function (opts) {
+        try {
+          if (opts && typeof opts.handler === 'function') {
+            const __h = opts.handler;
+            opts = Object.assign({}, opts, {
+              handler: function (req, res) { if (__lic.guard(req, res)) return; return __h.call(this, req, res); },
+            });
+            __licN++;
+          }
+        } catch {}
+        return __reg(opts);
+      };
+    }
+  } catch (e) {
+    try { console.error('[license] meeting guard 包裹失败（fail-open）:', e && e.message); } catch {}
+  }
   const dispose = mount(ctx)
   const cleanup = [dispose]
   try {
@@ -60,5 +93,7 @@ export function apply(ctx) {
       res.end(JSON.stringify({revision:'operational-minutes-models-v9',status:'operational_minutes_pending_review',formalAcceptanceClaimed:false,admissionPolicy:'local-minutes-operational/1',ownerKind:'native-loopback-service',sdkOwnershipClaimed:false,legacyReleaseAcceptanceClaimed:false,performanceImprovementClaimed:false,supportedLocalMinutesModels:['huiwen-max:latest','huiwen-luna:latest'],features:['word-editor','history-recovery','sentence-captions','restricted-meeting-qa','subtitle-seek','source-grounded-local-minutes'],deferred:['audio-trim','new-transcription-jobs'],preservedGroundedVersion:'grounded-minutes-engine-13-operational-local-3',modelDisplayName:'汇文纪要模型'}))
     }}))
   } catch(error) { for(const fn of cleanup.reverse()) fn?.(); throw error }
+
+  try { setTimeout(() => { try { console.log('[license] meeting route guards =', __licN); } catch {} }, 3000).unref(); } catch {}
   ctx.effect(() => () => { for(const fn of cleanup.splice(0).reverse()) fn?.() })
 }

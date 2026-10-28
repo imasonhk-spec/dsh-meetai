@@ -2,7 +2,7 @@
 // These are NOT legacy release/quality/performance acceptance certificates.
 export const LOCAL_SERVICE = Object.freeze({
   host:'127.0.0.1',port:11435,upstreamPort:11439,upstreamUid:0,nativeVersion:'0.32.13',
-  proxyScript:'${DSH_HOME}/dsh-ollama-shim/index.js',
+  proxyScript:'/home/lgsj/dsh-ollama-shim/index.js',
   proxySha256:'9c829293971a8f14f547341b56cf09f4d943c36487a1bed40b8842f69898acc9',
   executable:'/usr/local/node/bin/node',
   executableSha256:'b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd',

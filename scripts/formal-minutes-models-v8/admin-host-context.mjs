@@ -7,7 +7,7 @@ import { createAdminRuntimeOwner } from './admin-runtime-owner.mjs'
 import { createAdminNativeRequests } from './admin-native-requests.mjs'
 import { createAdminWriterLifecycle } from './admin-writer-lifecycle.mjs'
 import { openPrivateHostConfiguration } from '../native-unified/private-host-configuration.mjs'
-const HOME='${DSH_HOME}/.dsh/multi-user/users/admin/home'
+const HOME='/home/lgsj/.dsh/multi-user/users/admin/home'
 const PROFILE=path.join(HOME,'profiles/web')
 const HOST=path.join(PROFILE,'node_modules/dsh-meetai/index-huiwen.js')
 const need=(ok,code)=>{if(!ok)throw Object.assign(new Error(code),{code})}

@@ -5,7 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export const LOCAL_CAPTION_PREFIX = '/api/meeting-assistant/local-captions'
-const RUNTIME = '${DSH_HOME}/Downloads/AI game/akun-meeting/akun-runtime'
+const RUNTIME = '/home/lgsj/Downloads/AI game/akun-meeting/akun-runtime'
 const PYTHON = `${RUNTIME}/.venv/bin/python`
 const WORKER = fileURLToPath(new URL('./local-caption-worker.py', import.meta.url))
 const ASSETS = { paraformer: ['config.yaml','model.pt','tokens.json','seg_dict','am.mvn'], punc: ['config.yaml','model.pt','tokens.json'] }

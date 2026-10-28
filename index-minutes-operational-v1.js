@@ -1749,8 +1749,8 @@ async function handleRecordings(ctx, req, res, method) {
 }
 
 /** Only a locally staged, explicitly configured Akun Paraformer release may process upload audio. */
-const AKUN_ROOT = process.env.DSH_AKUN_RELEASE || '${DSH_HOME}/Downloads/AI game/akun-meeting/akun-runtime/release'
-const AKUN_PYTHON = process.env.DSH_AKUN_PYTHON || '${DSH_HOME}/Downloads/AI game/akun-meeting/akun-runtime/.venv/bin/python'
+const AKUN_ROOT = process.env.DSH_AKUN_RELEASE || '/home/lgsj/Downloads/AI game/akun-meeting/akun-runtime/release'
+const AKUN_PYTHON = process.env.DSH_AKUN_PYTHON || '/home/lgsj/Downloads/AI game/akun-meeting/akun-runtime/.venv/bin/python'
 const AKUN_MAX_MS = 30 * 60 * 1000
 let akunActiveRecording = null
 

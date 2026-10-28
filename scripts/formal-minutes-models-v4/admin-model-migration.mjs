@@ -5,7 +5,7 @@ import { constants } from 'node:fs'
 import { open, lstat, realpath, mkdir, rename, unlink } from 'node:fs/promises'
 import { createHash, randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
-const HOME = '${DSH_HOME}/.dsh/multi-user/users/admin/home'
+const HOME = '/home/lgsj/.dsh/multi-user/users/admin/home'
 const hash = raw => createHash('sha256').update(raw).digest('hex')
 const need = (ok, code) => { if (!ok) throw Object.assign(new Error(code), { code }) }
 const stamp = info => [info.dev, info.ino, info.uid, info.nlink, info.size, info.mtimeNs, info.ctimeNs].map(String).join(':')

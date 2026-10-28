@@ -236,14 +236,14 @@ export function createVoiceMeetingController({home,deviceId,device,business}) {
 export function mountVoiceMeetingControl(ctx) {
  const home=process.env.DSH_HOME,prefix='/api/meeting-assistant/voice-control'
  let controller,config,error,busy=false,closed=false,initializing;const captionReaders=new Map()
- const deviceRoot='${DSH_HOME}/01-DSH/11-汇报机器人/longshu-xiaowai-v2-upstream-full-r6/service'
+ const deviceRoot='/home/lgsj/01-DSH/11-汇报机器人/longshu-xiaowai-v2-upstream-full-r6/service'
  async function configured(){
   if(controller)return controller
   if(!initializing)initializing=initialize().catch(e=>{initializing=null;throw e})
   return initializing
  }
  async function initialize(){
-  if(home!=='${DSH_HOME}/.dsh/multi-user/users/admin/home')throw fail('ADMIN_REQUIRED',403)
+  if(home!=='/home/lgsj/.dsh/multi-user/users/admin/home')throw fail('ADMIN_REQUIRED',403)
   config=JSON.parse(await readFile(path.join(home,'meeting-assistant','voice-control-binding.json'),'utf8'))
   if(config.account!=='admin'||typeof config.deviceId!=='string'||!config.deviceId)throw fail('DEVICE_BINDING_REQUIRED',503)
   const raw=await readFile(path.join(deviceRoot,'data','.free_api_key'),'utf8')
@@ -296,7 +296,7 @@ export function mountVoiceMeetingControl(ctx) {
  },2000);timer.unref()
  const qaHandler=createVoiceQaInternalHandler({
   readKey:()=>readFile(path.join(home,'meeting-assistant','voice-control.key'),'utf8'),
-  binding:async()=>{if(home!=='${DSH_HOME}/.dsh/multi-user/users/admin/home')throw fail('ADMIN_REQUIRED',403);const bound=JSON.parse(await readFile(path.join(home,'meeting-assistant','voice-control-binding.json'),'utf8'));if(bound.account!=='admin'||typeof bound.deviceId!=='string'||!bound.deviceId)throw fail('DEVICE_BINDING_REQUIRED',503);return bound},
+  binding:async()=>{if(home!=='/home/lgsj/.dsh/multi-user/users/admin/home')throw fail('ADMIN_REQUIRED',403);const bound=JSON.parse(await readFile(path.join(home,'meeting-assistant','voice-control-binding.json'),'utf8'));if(bound.account!=='admin'||typeof bound.deviceId!=='string'||!bound.deviceId)throw fail('DEVICE_BINDING_REQUIRED',503);return bound},
   query:input=>voiceMeetingBusiness(ctx).qa(input)})
  async function handler(req,res){
   const send=(status,value)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(value))}

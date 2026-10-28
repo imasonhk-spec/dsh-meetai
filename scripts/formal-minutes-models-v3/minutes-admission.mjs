@@ -5,7 +5,7 @@ import { constants } from 'node:fs'
 import { lstat, realpath, open } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
-const ADMIN_HOME = '${DSH_HOME}/.dsh/multi-user/users/admin/home'
+const ADMIN_HOME = '/home/lgsj/.dsh/multi-user/users/admin/home'
 const SHA = /^[a-f0-9]{64}$/
 const issued = new WeakMap()
 const fail = code => Object.assign(new Error(code), { code })

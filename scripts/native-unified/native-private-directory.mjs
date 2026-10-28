@@ -3,7 +3,7 @@
 import * as fs from 'node:fs/promises';
 import { constants } from 'node:fs';
 import path from 'node:path';
-const HOME='${DSH_HOME}/.dsh/multi-user/users/admin/home';
+const HOME='/home/lgsj/.dsh/multi-user/users/admin/home';
 const need=(ok,code)=>{if(!ok)throw Object.assign(new Error(code),{code})};
 const same=(a,b)=>a.dev===b.dev&&a.ino===b.ino;
 function privateDirectory(info){need(info.isDirectory()&&info.uid===BigInt(process.getuid())&&

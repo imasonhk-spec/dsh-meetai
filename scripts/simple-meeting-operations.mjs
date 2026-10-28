@@ -16,7 +16,7 @@ export async function requireAdminDelete({ctx,request,home}) {
  const deny=(code,status)=>{throw Object.assign(new Error(code),{code,status})}
  let profile,connection
  try{profile=ctx.get('profileContext');connection=ctx.get('connection')}catch{deny('ADMIN_AUTH_UNAVAILABLE',503)}
- if(profile?.home!==home||home!=='${DSH_HOME}/.dsh/multi-user/users/admin/home'||profile.name!=='web')deny('ADMIN_REQUIRED',403)
+ if(profile?.home!==home||home!=='/home/lgsj/.dsh/multi-user/users/admin/home'||profile.name!=='web')deny('ADMIN_REQUIRED',403)
  if(typeof connection?.requestRejection!=='function'||typeof connection.admit!=='function'||!connection.operator)deny('ADMIN_AUTH_UNAVAILABLE',503)
  const rejection=await connection.requestRejection(request)
  if(rejection!==undefined)deny('ADMIN_AUTH_REQUIRED',rejection===403?403:401)
