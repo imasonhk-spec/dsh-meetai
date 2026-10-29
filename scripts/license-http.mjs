@@ -128,12 +128,16 @@ export function installLicense(ctx, { pluginId, prefix, poolTarget = 500, logger
   let usableNow = false;
   let warmed = false;
   let warmTimer = null;
+  // ★ v1.2：静默模式下 402 彻底失效（只留 revoked 一条路），这里缓存一份供 guard 快速判
+  let silentNow = true;
   async function refresh() {
     try {
       const st = await gate.state();
       usableNow = !!st.usable;
+      silentNow = st.silent !== false;
     } catch {
       usableNow = true;   // gate.state 自身抛错 → fail-open（L-A：授权层不能拖垮宿主）
+      silentNow = true;
     }
     warmed = true;
   }
@@ -149,6 +153,10 @@ export function installLicense(ctx, { pluginId, prefix, poolTarget = 500, logger
    */
   function guard(req, res) {
     if (intercept(req, res)) return true;
+    /* ★ v1.2 SILENT：静默模式下业务接口一律放行。
+       这是“装上即用”的最后一道保障 —— 即使 gate.state() 因为意外返回 usable=false，
+       也不该把客户的业务请求挡成 402（那会表现为插件整个页面打不开）。 */
+    if (silentNow) return false;
     if (!warmed || usableNow) return false;
     const st = { plugin_id: pluginId };
     json(res, 402, {
@@ -278,7 +286,7 @@ async function load(){
     $('scope').textContent = s.scope === 'suite' ? '全功能套件（' + (s.plugin_id||'') + ' 所在的套件证）' : (s.scope === 'plugin' ? '单插件证' : '未授权');
     $('lid').textContent = s.license_id || '-';
     $('exp').textContent = s.expires_at ? new Date(s.expires_at).toLocaleString('zh-CN') : '永久';
-    $('pool').textContent = (s.pool ?? 0) + ' 张（可用 ' + (s.usable ? '是' : '否') + '）';
+    $('pool').textContent = s.ticket_free ? '不限制用量（仅校验有效期）' : ((s.pool ?? 0) + ' 张（可用 ' + (s.usable ? '是' : '否') + '）'); /* WB-TICKET-FREE-UI */
     $('via').textContent = ({ own:'独立证（本插件）', suite:'套件证', auto:'自动注册' })[s.via] || s.via || '-';
     $('srv').textContent = s.server || '-';
     const b = $('badge');
