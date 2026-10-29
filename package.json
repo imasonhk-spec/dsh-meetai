@@ -1,6 +1,6 @@
 {
   "name": "dsh-meetai",
-  "version": "0.3.16",
+  "version": "0.3.17",
   "private": true,
   "type": "module",
   "description": "Admin简单确认永久删除会议及明确专属资产；保留普通文本纪要、Word模板导出、字幕及宿主修复",
