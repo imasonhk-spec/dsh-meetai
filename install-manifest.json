@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "bundle": "dsh-meetai",
+  "version": "0.4.0",
+  "pluginId": "meeting",
+  "title": "会议助手",
+  "requires": {
+    "bundlesBefore": [],
+    "hostServices": [
+      "webServer"
+    ],
+    "hostServicesSoft": [
+      "agentDefaultModel",
+      "agents",
+      "connection",
+      "llm",
+      "profileContext"
+    ],
+    "pluginsOptional": [
+      "workbenchCapabilities"
+    ]
+  },
+  "license": {
+    "gateVersion": "1.2c",
+    "gateMd5": "d27eff05335e9a57a976150865b73e7d",
+    "httpMd5": "dd31ae47fce2740154cf3e6e5d6dfeec",
+    "gatePaths": [
+      "scripts/license-gate.mjs",
+      "scripts/license-http.mjs"
+    ],
+    "panelMode": "inline",
+    "panelMustHave": [
+      "state.silent"
+    ],
+    "panelMustNotHave": [
+      "pool === 0 ? 'no_ticket'"
+    ],
+    "panelMd5": "4c5d24d8b9f840c97ecf6f0d75d26ec5"
+  },
+  "runtime": {
+    "node": ">=20",
+    "python": {
+      "min": "3.10",
+      "note": "仅用 Python 标准库，无需 pip 安装"
+    },
+    "bins": [
+      {
+        "name": "python3",
+        "required": true
+      }
+    ],
+    "models": [],
+    "services": [
+      {
+        "id": "akun-asr",
+        "env": "DSH_AKUN_RELEASE",
+        "required": false,
+        "degrade": "本地字幕灰掉，保留云端 ASR"
+      }
+    ]
+  },
+  "paths": {
+    "dataDir": {
+      "env": "DSH_HOME",
+      "default": "$DSH_HOME/meeting-assistant"
+    }
+  },
+  "enhancements": [
+    "akun-asr"
+  ]
+}
