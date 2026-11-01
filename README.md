@@ -13,7 +13,7 @@
 | 插件代码（已构建） | ✅ |
 | Node 依赖 | ✅ 已 bundle 进插件本体 |
 | Python venv | — 不需要 |
-| 后台服务（systemd unit + 应用目录） | — 无 |
+| 后台服务（systemd unit + 应用目录） | ✅ 已内联 1 个 |
 | 模型权重 | ❌ 不带（指向可配置端点） |
 | DSH 底座 | ❌ 不含（`--with-base` 自动拉取） |
 
@@ -68,7 +68,7 @@ sudo ./uninstall.sh
 
 ```bash
 # 服务状态
-systemctl status dsh-web
+systemctl status dsh-ollama-shim
 
 # 插件是否被 loader 接受（需带 cookie）
 curl -s -b /tmp/cookie 'https://<host>:3082/api/<plugin>/state'

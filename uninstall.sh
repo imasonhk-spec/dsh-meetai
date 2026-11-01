@@ -5,7 +5,7 @@ set -euo pipefail
 PKG_NAME="dsh-meetai"
 PKG_VERSION="0.5.0"
 PLUGIN_DIR="dsh-meetai"
-SERVICES=""
+SERVICES="dsh-ollama-shim"
 
 DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
 PROFILE_DIR="$DSH_HOME/profiles/web"
