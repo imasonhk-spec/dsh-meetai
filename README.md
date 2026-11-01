@@ -1,26 +1,75 @@
-# 五项独立验收包 0.3.8-split.3
+# dsh-meetai 0.5.0
 
-本包基于当前admin正式0.3.7名称版的逐字节克隆，仅做五项必要拆分和兼容适配：Word编辑、历史恢复、句级字幕高亮、受限本地会议问答、字幕点击定位。尚未取得用户真实关键操作验收，不是正式通过声明。
+会议助手
 
-## 保护与排除
+## 这是什么
 
-- 原正式grounded-minutes目录全部保持SHA不变，仍为engine-9；不复制失败dev.6的engine-14／coverage候选。
-- 原安全生成入口、Huiwen-LM名称归一化、Word及原始数据保护保持。
-- 不开放新的长录音纪要、裁剪和转写任务入口。字幕读／定位不能依赖这些未放行写入口。
-- 不改模型权重、预算、SDK，不自动ASR，不安装媒体工具或修改PATH。
+自包含 DSH 插件包。**下载解包即可安装，无需额外下载依赖或后台服务。**
 
-## 入口
+包含内容：
 
-宿主由[新宿主入口](scripts/minutes-host-split-five-v1.mjs)加载，复用经典[客户端](client.js) factory id dsh-meetai与cap:meeting。GET /api/meeting-assistant/release-info仅报告当前装载代际和待验收状态，不等于GUI可用性证据。
+| 组件 | 是否内联 |
+|---|---|
+| 插件代码（已构建） | ✅ |
+| Node 依赖 | ✅ 已 bundle 进插件本体 |
+| Python venv | — 不需要 |
+| 后台服务（systemd unit + 应用目录） | — 无 |
+| 模型权重 | ❌ 不带（指向可配置端点） |
+| DSH 底座 | ❌ 不含（`--with-base` 自动拉取） |
 
-## 发布门槛
+## 安装
 
-Lead审核完整diff、封印、隔离保护检查之后方可admin受控试装；用户用专用测试会议、Word和短音频副本逐项实际操作；安全独立通过项才推广global/mason/test。失败恢复旧入口，保留证据及原始数据；必要服务重启另行确认。
+```bash
+tar -xzf dsh-meetai-0.5.0.tar.gz
+cd dsh-meetai-0.5.0
+sudo ./install.sh
+```
 
-回退基线、交接文档及测试结果在本包父目录，不随npm业务包混入个人配置或生产数据。原正式README中的旧候选说明不再作为本包状态依据。字体保真、ASR准确性、长音频资源及未放行纪要/裁剪问题继续按原边界登记。
+### 选项
 
-## 独立问答兼容说明
+| 参数 | 作用 |
+|---|---|
+| `--with-base` | 本机没有 DSH 时，自动从 `imasonhk-spec/dsh` 拉取底座并安装 |
+| `--dry-run` | 只打印将要做什么，不落盘 |
+| `--skip-restart` | 装完不重启 dsh-web |
+| `--force` | 覆盖已有的 venv / 配置 |
 
-原问答、附件、模型选择和原历史保持原入口；新增受限问答使用 `/restricted-qa`、`/restricted-ask`、`/restricted-qa-sessions` 与单独历史文件，不混写原历史。新增入口具有新会话、历史选择与分页；来源点击仍需服务端复核，失效来源不自动升级为可信引用。每问独立核对资料，不自动把聊天历史拼入模型上下文。
+## 它会装到哪里
 
-Word提交超时后阻止重复提交，可仅查询确认状态；字幕仅使用原文显式句级区间，秒精度、准确性未认证，缺时间则不定位。该修订包取代已暂缓安装的 split.1，但尚未实际装载或获得浏览器、Word服务、真实音频验收。
+- **宿主 profile**：`~/.dsh/profiles/web/node_modules/`
+- **所有已存在账号**：`~/.dsh/multi-user/users/<账号>/home/profiles/web/node_modules/`
+- **后台服务**：`/etc/systemd/system/<unit>.service`
+
+## 幂等性
+
+| 情况 | 行为 |
+|---|---|
+| 服务已 `active` | **跳过**，不动它 |
+| 服务 `inactive`/`failed` | 重写 unit 并重启 |
+| venv 已存在 | 跳过（`--force` 才覆盖） |
+| 插件目录已存在 | 覆盖为新版本 |
+
+## 密钥
+
+包内**不含任何真实密钥**。所有 token / 密码 / secret 在安装时用
+`openssl rand -hex 24` 现场生成，写入 `~/.dsh/publish-env/` 并 `chmod 600`。
+
+## 卸载
+
+```bash
+sudo ./uninstall.sh
+```
+
+## 端口
+
+
+
+## 验证
+
+```bash
+# 服务状态
+systemctl status dsh-web
+
+# 插件是否被 loader 接受（需带 cookie）
+curl -s -b /tmp/cookie 'https://<host>:3082/api/<plugin>/state'
+```
