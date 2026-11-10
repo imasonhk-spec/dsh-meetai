@@ -1,4 +1,4 @@
-# dsh-meetai 0.5.0
+# dsh-meetai 0.5.1
 
 会议助手
 
@@ -20,8 +20,8 @@
 ## 安装
 
 ```bash
-tar -xzf dsh-meetai-0.5.0.tar.gz
-cd dsh-meetai-0.5.0
+tar -xzf dsh-meetai-0.5.1.tar.gz
+cd dsh-meetai-0.5.1
 sudo ./install.sh
 ```
 

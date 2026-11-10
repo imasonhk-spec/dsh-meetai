@@ -9,8 +9,7 @@ const digest = (bytes) => createHash('sha256').update(bytes).digest('hex')
 
 /** Each instance belongs to one DSH_HOME. Four unfinished uploads reserve at most 2GiB. */
 export class ChunkedUploadStore {
-  constructor(root, persistRecording, withMeetingActivity = async (_id, operation) => operation()) {
-    this.withMeetingActivity = withMeetingActivity
+  constructor(root, persistRecording) {
     this.root = path.resolve(root)
     this.parts = path.join(this.root, 'upload-parts')
     this.files = path.join(this.root, 'recordings', 'files')
@@ -39,15 +38,7 @@ export class ChunkedUploadStore {
     this.paths(id)
     if (this.active.has(id)) throw fail('UPLOAD_BUSY', 'Upload is being processed')
     this.active.add(id)
-    try { const state=await this.load(id);return await this.withMeetingActivity(state.meetingId,operation) } finally { this.active.delete(id) }
-  }
-  async assertMeetingIdle(meetingId) {
-    const entries=await fs.readdir(this.parts).catch(error=>{if(error.code==='ENOENT')return [];throw error})
-    for(const name of entries){
-      if(!/^upl_[a-f0-9]{32}\.json$/.test(name))continue
-      const state=await this.load(name.slice(0,-5))
-      if(state.meetingId===meetingId&&(!state.committed||this.active.has(name.slice(0,-5))))throw fail('MEETING_UPLOAD_ACTIVE','本会议有未完成上传，请先完成或取消上传。')
-    }
+    try { return await operation() } finally { this.active.delete(id) }
   }
   async reapExpired(now = Date.now()) {
     const entries = await fs.readdir(this.parts).catch((error) => { if (error.code === 'ENOENT') return []; throw error })
@@ -83,8 +74,7 @@ export class ChunkedUploadStore {
     this.creationTail = task.catch(() => {})
     return task
   }
-  async createSession(meta) { return this.withMeetingActivity(meta.meetingId,()=>this.createSessionOriginal(meta)) }
-  async createSessionOriginal({ filename, totalBytes, meetingId = '' }) {
+  async createSession({ filename, totalBytes, meetingId = '' }) {
     const name = String(filename || '').split(/[\\/]/).pop().replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 120)
     const ext = name.slice(name.lastIndexOf('.') + 1).toLowerCase()
     if (!name || !EXTENSIONS.has(ext)) throw fail('BAD_EXTENSION', 'Unsupported audio extension')

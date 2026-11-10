@@ -15,23 +15,21 @@ async function bounded(fn,{signal,timeoutMs=10000}={}) {
   finally{clearTimeout(timer);signal?.removeEventListener('abort',abort)}
 }
 export async function chooseCoreRoute(llm,selected,options={}) {
-  const expectedModel=options.expectedModel??CORE_MODEL
-  if(![CORE_MODEL,'huiwen-max:latest'].includes(expectedModel)||expectedModel==='huiwen-max:latest'&&selected?.provider!=='ollama')throw error('CORE_MODEL_REQUIRED','任务模型身份未通过校验')
   if(!llm||typeof llm.listProviders!=='function'||typeof llm.listModels!=='function')throw error('MODEL_DIRECTORY_UNAVAILABLE','宿主模型目录不可用')
   const providers=await bounded(()=>llm.listProviders(),options)
   if(!Array.isArray(providers)||providers.some(p=>typeof p?.id!=='string'))throw error('MODEL_DIRECTORY_UNAVAILABLE','宿主模型目录格式不兼容')
   if(selected) {
-    if(selected.model!==expectedModel||typeof selected.provider!=='string'||!providers.some(p=>p.id===selected.provider))throw error('CORE_MODEL_REQUIRED','纪要固定使用所选本地Huiwen-LM')
+    if(selected.model!==CORE_MODEL||typeof selected.provider!=='string'||!providers.some(p=>p.id===selected.provider))throw error('CORE_MODEL_REQUIRED','纪要固定使用所选本地Huiwen-LM')
     const models=await bounded(()=>llm.listModels(selected.provider,options.signal),options)
-    if(!Array.isArray(models)||!models.some(m=>m.id===expectedModel))throw error('CORE_MODEL_UNAVAILABLE','所选提供方未提供Huiwen-LM')
-    return Object.freeze({provider:selected.provider,model:expectedModel})
+    if(!Array.isArray(models)||!models.some(m=>m.id===CORE_MODEL))throw error('CORE_MODEL_UNAVAILABLE','所选提供方未提供Huiwen-LM')
+    return Object.freeze({provider:selected.provider,model:CORE_MODEL})
   }
   const routes=[]
   for(const p of providers) {
     let models
     try{models=await bounded(()=>llm.listModels(p.id,options.signal),options)}
     catch(e){if(options.signal?.aborted||e.code==='MODEL_DIRECTORY_TIMEOUT')throw e;continue}
-    if(Array.isArray(models)&&models.some(m=>m.id===expectedModel))routes.push({provider:p.id,model:expectedModel})
+    if(Array.isArray(models)&&models.some(m=>m.id===CORE_MODEL))routes.push({provider:p.id,model:CORE_MODEL})
   }
   if(routes.length!==1)throw error(routes.length?'CORE_MODEL_AMBIGUOUS':'CORE_MODEL_UNAVAILABLE','需准备并明确选择本地Huiwen-LM路由，不回退其它模型')
   return Object.freeze(routes[0])
@@ -40,12 +38,11 @@ export async function createHostAdapter(llm,selection,options={}) {
   const route=await chooseCoreRoute(llm,selection,options)
   if(typeof llm.prepareCall!=='function')throw error('LLM_RUNTIME_TOO_OLD','宿主缺少绑定模型调用能力')
   const info=typeof llm.resolveModelInfo==='function'?await bounded(()=>llm.resolveModelInfo(route.provider,route.model),options):null
-  if(route.model==='huiwen-max:latest'&&!info)throw error('MODEL_ROUTE_CHANGED','Max缺少绑定模型元数据')
   if(info&&(info.provider!==route.provider||info.id!==route.model))throw error('MODEL_ROUTE_CHANGED','模型元数据与路由不一致')
   const efforts=info?.reasoning?.efforts||[]
   const reasoningEffort=['none','minimal','low'].find(id=>efforts.some(e=>e.id===id))||info?.reasoning?.defaultEffort
   const identity=Object.freeze({...route,reasoningEffort:reasoningEffort??null})
-  return {identity,fingerprint:route.model===CORE_MODEL?VERSION:VERSION+'|minutes-max-binding-v1',async complete({system,user,maxTokens=1536,signal}) {
+  return {identity,fingerprint:VERSION,async complete({system,user,maxTokens=1536,signal}) {
     signal?.throwIfAborted()
     if(typeof system!=='string'||typeof user!=='string'||!Number.isSafeInteger(maxTokens)||maxTokens<=0)throw error('MODEL_CALL_CONFIG_CHANGED','调用参数不合法')
     const config={...route,temperature:0,maxTokens,...(reasoningEffort?{reasoningEffort}:{})}

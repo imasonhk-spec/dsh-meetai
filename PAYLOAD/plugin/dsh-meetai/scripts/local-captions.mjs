@@ -5,7 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export const LOCAL_CAPTION_PREFIX = '/api/meeting-assistant/local-captions'
-const RUNTIME = process.env.DSH_AKUN_RUNTIME || '/home/lgsj/Downloads/AI game/akun-meeting/akun-runtime'
+const RUNTIME = '/home/lgsj/Downloads/AI game/akun-meeting/akun-runtime'
 const PYTHON = `${RUNTIME}/.venv/bin/python`
 const WORKER = fileURLToPath(new URL('./local-caption-worker.py', import.meta.url))
 const ASSETS = { paraformer: ['config.yaml','model.pt','tokens.json','seg_dict','am.mvn'], punc: ['config.yaml','model.pt','tokens.json'] }
@@ -94,32 +94,6 @@ async function privateDirectory(dir) {
   const info = await lstat(dir)
   if (!info.isDirectory() || info.isSymbolicLink() || (typeof process.getuid === 'function' && info.uid !== process.getuid())) throw fail(503,'LOCAL_STORAGE_UNAVAILABLE')
   await chmod(dir,0o700)
-}
-
-/** External audio shares the existing local worker and process inference limit. */
-export async function createExternalCaptionSession({dir,readiness=localCaptionReadiness,workerFactory=createPythonCaptionWorker}) {
-  if(!(await readiness()).ready)throw fail(503,'LOCAL_DEPENDENCIES_UNAVAILABLE')
-  await privateDirectory(dir)
-  const cancel=new AbortController()
-  let worker,busy=false
-  return {
-    async infer({seq,pcm,startMs}) {
-      if(cancel.signal.aborted)throw fail(410,'LOCAL_SESSION_CANCELLED')
-      if(busy||activeInference>=MAX_CONCURRENCY)throw fail(429,'LOCAL_INFERENCE_BUSY')
-      if(!Buffer.isBuffer(pcm)||pcm.length<3200||pcm.length>MAX_BYTES||pcm.length%2)throw fail(400,'PCM_SAMPLE_ALIGNMENT')
-      busy=true;activeInference++
-      const file=path.join(dir,`chunk-${seq}.pcm`)
-      let timer
-      try{
-        await writeFile(file,pcm,{flag:'wx',mode:0o600})
-        worker ||= workerFactory({dir,signal:cancel.signal})
-        const result=await Promise.race([(async()=>{await worker.ready;return worker.infer({seq})})(),new Promise((_,reject)=>{timer=setTimeout(()=>{cancel.abort();reject(fail(504,'LOCAL_INFERENCE_TIMEOUT'))},120000)})])
-        if(typeof result?.text!=='string'||result.text.length>10000)throw fail(503,'LOCAL_INFERENCE_FAILED')
-        return {entries:result.text.trim()?[{utteranceId:`external:${seq}`,startMs,endMs:startMs+pcm.length/32,text:result.text.trim(),speakerId:null,kind:'final',confidenceState:'unknown'}]:[]}
-      }finally{clearTimeout(timer);await rm(file,{force:true}).catch(()=>{});busy=false;activeInference--}
-    },
-    async close(){cancel.abort();worker?.kill();await rm(dir,{recursive:true,force:true})}
-  }
 }
 async function readPCM(req, signal) {
   if (req.headers['content-type'] !== 'application/octet-stream' || req.headers['content-encoding']) throw fail(415,'PCM16_REQUIRED')

@@ -1,5 +1,4 @@
 import fs from 'node:fs/promises';
-import { createOwnedPurge } from './simple-owned-purge.mjs';
 import path from 'node:path';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { Transform } from 'node:stream';
@@ -46,7 +45,7 @@ function summary(record) {
 }
 
 /** root MUST come from authenticated Host data root, never an HTTP body. */
-export async function createAssetStore({ root, assertMeetingWritable = () => {}, enterMeeting = () => () => {} } = {}) {
+export async function createAssetStore({ root } = {}) {
   if (typeof root !== 'string' || !path.isAbsolute(root)) throw assetError('ASSET_ROOT_INVALID', '宿主未提供账号私有数据根。', 500);
   const journal = await openJournal(root);
   const artifactRoot = path.join(journal.root, 'artifacts');
@@ -55,11 +54,7 @@ export async function createAssetStore({ root, assertMeetingWritable = () => {},
     const rootStat = await fs.lstat(artifactRoot);
     if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) throw assetError('ASSET_ROOT_INVALID', 'artifact目录不安全。', 500);
   } catch (error) { await journal.close(); throw error; }
-  const ownedPurge = createOwnedPurge({journal,artifactRoot});
   const store = {
-    retainedNativeReferences: ownedPurge.nativeReferences,
-    inspectMeetingDeletion: ownedPurge.inspect,
-    deleteMeetingAssets: ownedPurge.remove,
     get revision() { return journal.revision; },
     get availability() { return journal.availability; },
     reconcileUncertain: () => journal.reconcileUncertain(),
@@ -91,7 +86,6 @@ export async function createAssetStore({ root, assertMeetingWritable = () => {},
             checkType(type); const value = jsonValue(input); const alias = IDS[type]; const id = value.id || (alias && value[alias]); checkId(id);
             if (alias && value[alias] && value[alias] !== id) throw assetError('ASSET_ID_MISMATCH', '资产标识不一致。', 400);
             value.id = id; if (alias) value[alias] = id;
-            if(value.meetingId)assertMeetingWritable(value.meetingId);
             if (type === 'meetings') value.meetingId = id;
             else if (type !== 'legacyImports' && type !== 'templates') checkId(value.meetingId);
             const previous = read(type,id); cas(previous?.revision || 0, expectedRevision);
@@ -149,7 +143,6 @@ export async function createAssetStore({ root, assertMeetingWritable = () => {},
         }
         // Deletes cannot strand references; immutable history stays intact.
         for (const op of pending.values()) if (op.delete) for (const type of ASSET_TYPES) for (const record of tx.list(type)) for (const [field,target] of Object.entries(REFS)) if (target === op.type && record[field] === op.id && !(record.id === op.id && type === op.type)) throw assetError('ASSET_REFERENCED', '资产仍被引用，不能删除。', 409);
-        for(const op of pending.values()){const owner=op.value?.meetingId||journal.get(op.type,op.id)?.meetingId;if(owner)assertMeetingWritable(owner);}
         const revision = await journal.append([...pending.values()]);
         return { result: clone(result), revision };
       });
@@ -194,7 +187,6 @@ export async function createAssetStore({ root, assertMeetingWritable = () => {},
     },
     async putArtifact({ data, filePath, kind = 'binary', expectedSha256, meetingId, maxBytes = 4 * 1024 ** 3 } = {}) {
       checkId(meetingId);
-      const release=enterMeeting(meetingId);try {
       if ((data === undefined) === (filePath === undefined)) throw assetError('ARTIFACT_INPUT_INVALID','artifact必须提供一种数据来源。',400);
       if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw assetError('ARTIFACT_INPUT_INVALID','artifact限额无效。',400);
       if (expectedSha256 && !/^[a-f0-9]{64}$/.test(expectedSha256)) throw assetError('ARTIFACT_INPUT_INVALID','artifact哈希无效。',400);
@@ -210,7 +202,6 @@ export async function createAssetStore({ root, assertMeetingWritable = () => {},
         // A crash before this commit leaves an orphan, never a broken reference.
         return await store.put('artifacts',{id,meetingId,kind,sha256,bytes,status:'ready'},{expectedRevision:0});
       } catch (error) { await fs.rm(temp,{force:true}).catch(()=>{}); throw error; }
-      } finally {release()}
     },
     async resolveArtifact(id,{meetingId} = {}) {
       const record = store.get('artifacts',id,{meetingId}); const filePath = path.join(artifactRoot,id + '.data');

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 PKG_NAME="dsh-meetai"
-PKG_VERSION="0.5.0"
+PKG_VERSION="0.5.1"
 PLUGIN_DIR="dsh-meetai"
 SERVICES="dsh-ollama-shim"
 
