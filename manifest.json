@@ -1,0 +1,51 @@
+{
+  "name": "dsh-meetai",
+  "unit": "dsh-meetai",
+  "version": "0.5.2",
+  "previousVersion": "0.5.1",
+  "title": "会议助手",
+  "kind": "plugin",
+  "services": [
+    "dsh-ollama-shim"
+  ],
+  "ports": [],
+  "pluginDir": "dsh-meetai",
+  "hasVenv": false,
+  "hasNode": false,
+  "hasHarness": false,
+  "generatedAt": "2026-11-10T12:48:11+08:00",
+  "host": "lgsj",
+  "installScope": [
+    "host-profile",
+    "all-existing-accounts"
+  ],
+  "baseRepo": "imasonhk-spec/dsh",
+  "baseTag": "v0.2.0",
+  "fsEntries": [
+    {
+      "src": "/home/lgsj/dsh-ollama-shim",
+      "dst": "fs/home/lgsj/dsh-ollama-shim",
+      "type": "dir"
+    },
+    {
+      "src": "/usr/local/bin/node",
+      "dst": "fs/usr/local/bin/node",
+      "type": "symlink",
+      "target": "/usr/local/node/bin/node"
+    }
+  ],
+  "aptProvides": [],
+  "runtimeFrom": [
+    "/usr/local/node"
+  ],
+  "pathRemap": [
+    {
+      "from": "/home/lgsj/.dsh",
+      "to": "@DSH_HOME@"
+    },
+    {
+      "from": "/home/lgsj",
+      "to": "@USER_HOME@"
+    }
+  ]
+}
